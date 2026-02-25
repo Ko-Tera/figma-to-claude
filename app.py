@@ -4,9 +4,11 @@ Figma URL または デザイン画像を入力すると、Claude Code CLIの4�
 デザイン → 設計 → コード生成 → レビューを自動で行う。
 """
 
+import io
 import os
 import shutil
 import subprocess
+import zipfile
 import streamlit as st
 
 # プロジェクトルート
@@ -165,6 +167,50 @@ def list_output_files() -> list[tuple[str, str]]:
             except (UnicodeDecodeError, OSError):
                 files.append((full, "(バイナリファイル)"))
     return files
+
+
+def build_zip() -> bytes | None:
+    """全出力ファイルを1つのZIPにまとめて返す。"""
+    buf = io.BytesIO()
+    file_count = 0
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # design-analysis.md
+        da = read_file_safe("design-analysis.md")
+        if da:
+            zf.writestr("design-analysis.md", da)
+            file_count += 1
+
+        # architecture.md
+        arch = read_file_safe("architecture.md")
+        if arch:
+            zf.writestr("architecture.md", arch)
+            file_count += 1
+
+        # review.md
+        rev = read_file_safe("review.md")
+        if rev:
+            zf.writestr("review.md", rev)
+            file_count += 1
+
+        # output/ ディレクトリ内の全ファイル
+        output_dir = os.path.join(PROJECT_DIR, "output")
+        if os.path.isdir(output_dir):
+            for root, _, names in os.walk(output_dir):
+                for name in names:
+                    full = os.path.join(root, name)
+                    rel = os.path.relpath(full, PROJECT_DIR)
+                    try:
+                        with open(full, "rb") as f:
+                            zf.writestr(rel, f.read())
+                        file_count += 1
+                    except OSError:
+                        pass
+
+    if file_count == 0:
+        return None
+
+    return buf.getvalue()
 
 
 # ---------- claude CLI チェック ----------
@@ -349,6 +395,19 @@ if auto_run and has_input:
                 st.markdown(f"- {exists} `{fp}`")
                 for fpath, _ in list_output_files():
                     st.markdown(f"  - `{fpath}`")
+
+        # ZIPダウンロード
+        st.markdown("### 一括ダウンロード")
+        zip_data = build_zip()
+        if zip_data:
+            st.download_button(
+                label="全ファイルをZIPでダウンロード",
+                data=zip_data,
+                file_name="figma-to-claude-output.zip",
+                mime="application/zip",
+                type="primary",
+                use_container_width=True,
+            )
 
     # エージェント実行ログ
     with st.expander("エージェント実行ログ（raw output）"):
