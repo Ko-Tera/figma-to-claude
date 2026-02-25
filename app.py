@@ -17,102 +17,8 @@ PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOADS_DIR = os.path.join(PROJECT_DIR, "uploads")
 EXPORTS_DIR = os.path.join(PROJECT_DIR, "exports")
 
-# ---------- ページ設定 ----------
-st.set_page_config(
-    page_title="Figma → Claude Code",
-    page_icon="🎨",
-    layout="wide",
-)
 
-# ---------- セッションステート初期化 ----------
-if "pipeline_done" not in st.session_state:
-    st.session_state.pipeline_done = False
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = None
-if "all_outputs" not in st.session_state:
-    st.session_state.all_outputs = {}
-if "error_msg" not in st.session_state:
-    st.session_state.error_msg = None
-
-# ---------- ヘッダー ----------
-st.title("Figma → Claude Code")
-st.caption("Figma URL またはデザイン画像からClaude Codeが自動でコードを生成します")
-
-# ---------- サイドバー ----------
-with st.sidebar:
-    st.header("エージェント パイプライン")
-    st.markdown("""
-| # | エージェント | 処理内容 |
-|---|------------|---------|
-| 1 | 🎨 **Designer** | デザイン分析 |
-| 2 | 🏗️ **Architect** | コンポーネント設計 |
-| 3 | 💻 **Coder** | コード生成 |
-| 4 | 🔍 **Reviewer** | レビュー + 自動修正 |
-""")
-    st.divider()
-    st.markdown("### 出力ファイル")
-    st.markdown(f"""
-- `{PROJECT_DIR}/design-analysis.md`
-- `{PROJECT_DIR}/architecture.md`
-- `{PROJECT_DIR}/output/`
-- `{PROJECT_DIR}/review.md`
-""")
-
-    st.divider()
-    model = st.selectbox(
-        "Claude Model",
-        ["sonnet", "opus", "haiku"],
-        index=0,
-    )
-
-    # 過去のエクスポート一覧
-    exports = list_exports()
-    if exports:
-        st.divider()
-        st.markdown(f"### 過去のエクスポート ({len(exports)}件)")
-        for fname, fpath in exports:
-            with open(fpath, "rb") as f:
-                st.download_button(
-                    label=f"📦 {fname}",
-                    data=f.read(),
-                    file_name=fname,
-                    mime="application/zip",
-                    key=f"export_{fname}",
-                    use_container_width=True,
-                )
-
-# ---------- エージェント定義 ----------
-AGENTS = [
-    {
-        "name": "designer",
-        "label": "🎨 Designer",
-        "output_file": "design-analysis.md",
-        "tab": "🎨 デザイン分析",
-    },
-    {
-        "name": "architect",
-        "label": "🏗️ Architect",
-        "prompt": "design-analysis.md を読み込んで architecture.md を作成してください。",
-        "output_file": "architecture.md",
-        "tab": "🏗️ 設計書",
-    },
-    {
-        "name": "coder",
-        "label": "💻 Coder",
-        "prompt": "architecture.md と design-analysis.md を読み込んで output/ ディレクトリにコードを生成してください。",
-        "output_file": None,
-        "tab": "💻 生成コード",
-    },
-    {
-        "name": "reviewer",
-        "label": "🔍 Reviewer",
-        "prompt": "output/ のコードを design-analysis.md と照合してレビューし、問題があれば修正してください。review.md を作成してください。",
-        "output_file": "review.md",
-        "tab": "🔍 レビュー結果",
-    },
-]
-
-
+# ---------- ヘルパー関数 ----------
 def build_designer_prompt(figma_url: str | None, image_paths: list[str] | None) -> str:
     """Designer エージェント用のプロンプトを構築する。"""
     if figma_url:
@@ -216,25 +122,21 @@ def build_zip() -> bytes | None:
     file_count = 0
 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        # design-analysis.md
         da = read_file_safe("design-analysis.md")
         if da:
             zf.writestr("design-analysis.md", da)
             file_count += 1
 
-        # architecture.md
         arch = read_file_safe("architecture.md")
         if arch:
             zf.writestr("architecture.md", arch)
             file_count += 1
 
-        # review.md
         rev = read_file_safe("review.md")
         if rev:
             zf.writestr("review.md", rev)
             file_count += 1
 
-        # output/ ディレクトリ内の全ファイル
         output_dir = os.path.join(PROJECT_DIR, "output")
         if os.path.isdir(output_dir):
             for root, _, names in os.walk(output_dir):
@@ -252,6 +154,102 @@ def build_zip() -> bytes | None:
         return None
 
     return buf.getvalue()
+
+
+# ---------- ページ設定 ----------
+st.set_page_config(
+    page_title="Figma → Claude Code",
+    page_icon="🎨",
+    layout="wide",
+)
+
+# ---------- セッションステート初期化 ----------
+if "pipeline_done" not in st.session_state:
+    st.session_state.pipeline_done = False
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = None
+if "all_outputs" not in st.session_state:
+    st.session_state.all_outputs = {}
+if "error_msg" not in st.session_state:
+    st.session_state.error_msg = None
+
+# ---------- ヘッダー ----------
+st.title("Figma → Claude Code")
+st.caption("Figma URL またはデザイン画像からClaude Codeが自動でコードを生成します")
+
+# ---------- サイドバー ----------
+with st.sidebar:
+    st.header("エージェント パイプライン")
+    st.markdown("""
+| # | エージェント | 処理内容 |
+|---|------------|---------|
+| 1 | 🎨 **Designer** | デザイン分析 |
+| 2 | 🏗️ **Architect** | コンポーネント設計 |
+| 3 | 💻 **Coder** | コード生成 |
+| 4 | 🔍 **Reviewer** | レビュー + 自動修正 |
+""")
+    st.divider()
+    st.markdown("### 出力ファイル")
+    st.markdown(f"""
+- `{PROJECT_DIR}/design-analysis.md`
+- `{PROJECT_DIR}/architecture.md`
+- `{PROJECT_DIR}/output/`
+- `{PROJECT_DIR}/review.md`
+""")
+
+    st.divider()
+    model = st.selectbox(
+        "Claude Model",
+        ["sonnet", "opus", "haiku"],
+        index=0,
+    )
+
+    # 過去のエクスポート一覧
+    exports = list_exports()
+    if exports:
+        st.divider()
+        st.markdown(f"### 過去のエクスポート ({len(exports)}件)")
+        for fname, fpath in exports:
+            with open(fpath, "rb") as f:
+                st.download_button(
+                    label=f"📦 {fname}",
+                    data=f.read(),
+                    file_name=fname,
+                    mime="application/zip",
+                    key=f"export_{fname}",
+                    use_container_width=True,
+                )
+
+# ---------- エージェント定義 ----------
+AGENTS = [
+    {
+        "name": "designer",
+        "label": "🎨 Designer",
+        "output_file": "design-analysis.md",
+        "tab": "🎨 デザイン分析",
+    },
+    {
+        "name": "architect",
+        "label": "🏗️ Architect",
+        "prompt": "design-analysis.md を読み込んで architecture.md を作成してください。",
+        "output_file": "architecture.md",
+        "tab": "🏗️ 設計書",
+    },
+    {
+        "name": "coder",
+        "label": "💻 Coder",
+        "prompt": "architecture.md と design-analysis.md を読み込んで output/ ディレクトリにコードを生成してください。",
+        "output_file": None,
+        "tab": "💻 生成コード",
+    },
+    {
+        "name": "reviewer",
+        "label": "🔍 Reviewer",
+        "prompt": "output/ のコードを design-analysis.md と照合してレビューし、問題があれば修正してください。review.md を作成してください。",
+        "output_file": "review.md",
+        "tab": "🔍 レビュー結果",
+    },
+]
 
 
 # ---------- claude CLI チェック ----------
