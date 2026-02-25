@@ -1,10 +1,9 @@
 """Figma → Claude Code ランチャー
 
-Figma URLを入力すると、4つのエージェントを順番に実行し、
+Figma URL または デザイン画像を入力すると、4つのエージェントを順番に実行し、
 デザイン分析 → 設計 → コード生成 → レビューまでを自動で行う。
 """
 
-import json
 import os
 import shutil
 import subprocess
@@ -37,16 +36,39 @@ def run_agent(agent_name: str, prompt: str) -> str:
     return result.stdout
 
 
-def run_pipeline(figma_url: str) -> dict:
+def build_designer_prompt(source: str) -> str:
+    """入力ソースに応じてDesignerエージェント用プロンプトを構築する。"""
+    if source.startswith("http"):
+        return f"以下のFigma URLのデザインを分析して design-analysis.md を作成してください:\n{source}"
+
+    # ファイルパス（カンマ区切りで複数可）
+    paths = [p.strip() for p in source.split(",")]
+    abs_paths = []
+    for p in paths:
+        ap = os.path.abspath(p)
+        if not os.path.exists(ap):
+            print(f"警告: ファイルが見つかりません: {ap}")
+            continue
+        abs_paths.append(ap)
+
+    if not abs_paths:
+        print("エラー: 有効なファイルが見つかりません")
+        sys.exit(1)
+
+    paths_str = "\n".join(f"- {p}" for p in abs_paths)
+    return (
+        f"以下のデザイン画像ファイルを Read ツールで読み込んで分析し、design-analysis.md を作成してください。\n"
+        f"画像ファイル:\n{paths_str}"
+    )
+
+
+def run_pipeline(source: str) -> dict:
     """4エージェントのパイプラインを順番に実行する。"""
     results = {}
 
     # Stage 1: Designer
-    print("\n[1/4] 🎨 Designer — Figmaデザインを分析中...")
-    results["designer"] = run_agent(
-        "designer",
-        f"以下のFigma URLのデザインを分析して design-analysis.md を作成してください:\n{figma_url}",
-    )
+    print("\n[1/4] 🎨 Designer — デザインを分析中...")
+    results["designer"] = run_agent("designer", build_designer_prompt(source))
     print("  ✅ design-analysis.md を作成しました")
 
     # Stage 2: Architect
@@ -79,11 +101,18 @@ def run_pipeline(figma_url: str) -> dict:
 def main():
     """CLIエントリポイント。"""
     if len(sys.argv) < 2:
-        print("使い方: python launcher.py <Figma URL>")
-        print("例: python launcher.py https://www.figma.com/design/XXXXX/...")
+        print("使い方:")
+        print("  python launcher.py <Figma URL>")
+        print("  python launcher.py <画像パス>")
+        print("  python launcher.py <画像1>,<画像2>,<画像3>  (複数画像)")
+        print()
+        print("例:")
+        print("  python launcher.py https://www.figma.com/design/XXXXX/...")
+        print("  python launcher.py ./design.png")
+        print("  python launcher.py ./top.png,./about.png,./footer.png")
         sys.exit(1)
 
-    figma_url = sys.argv[1]
+    source = sys.argv[1]
 
     # claude CLI が使えるか確認
     if not shutil.which("claude"):
@@ -91,13 +120,15 @@ def main():
         print("  npm install -g @anthropic-ai/claude-code")
         sys.exit(1)
 
+    is_url = source.startswith("http")
     print("=" * 50)
     print("Figma → Claude Code パイプライン")
     print("=" * 50)
-    print(f"URL: {figma_url}")
+    print(f"入力: {'URL' if is_url else '画像ファイル'}")
+    print(f"ソース: {source}")
 
     try:
-        run_pipeline(figma_url)
+        run_pipeline(source)
     except Exception as e:
         print(f"\n❌ エラー: {e}")
         sys.exit(1)

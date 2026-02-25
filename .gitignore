@@ -29,3 +29,11 @@ Thumbs.db
 # Output
 output/
 *.zip
+
+# Uploads
+uploads/
+
+# Generated analysis
+design-analysis.md
+architecture.md
+review.md

@@ -1,6 +1,6 @@
 """Figma → Claude Code ランチャー — Streamlit UI
 
-Figma URLを入力すると、Claude Code CLIの4エージェントを順番に実行し、
+Figma URL または デザイン画像を入力すると、Claude Code CLIの4エージェントを順番に実行し、
 デザイン → 設計 → コード生成 → レビューを自動で行う。
 """
 
@@ -11,6 +11,7 @@ import streamlit as st
 
 # プロジェクトルート
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOADS_DIR = os.path.join(PROJECT_DIR, "uploads")
 
 # ---------- ページ設定 ----------
 st.set_page_config(
@@ -31,7 +32,7 @@ if "error_msg" not in st.session_state:
 
 # ---------- ヘッダー ----------
 st.title("Figma → Claude Code")
-st.caption("Figma URLを入力するとClaude Codeが自動でデザインからコードを生成します")
+st.caption("Figma URL またはデザイン画像からClaude Codeが自動でコードを生成します")
 
 # ---------- サイドバー ----------
 with st.sidebar:
@@ -39,7 +40,7 @@ with st.sidebar:
     st.markdown("""
 | # | エージェント | 処理内容 |
 |---|------------|---------|
-| 1 | 🎨 **Designer** | Figma MCPでデザイン分析 |
+| 1 | 🎨 **Designer** | デザイン分析 |
 | 2 | 🏗️ **Architect** | コンポーネント設計 |
 | 3 | 💻 **Coder** | コード生成 |
 | 4 | 🔍 **Reviewer** | レビュー + 自動修正 |
@@ -65,34 +66,58 @@ AGENTS = [
     {
         "name": "designer",
         "label": "🎨 Designer",
-        "prompt_template": "以下のFigma URLのデザインを分析して design-analysis.md を作成してください:\n{url}",
         "output_file": "design-analysis.md",
         "tab": "🎨 デザイン分析",
     },
     {
         "name": "architect",
         "label": "🏗️ Architect",
-        "prompt_template": "design-analysis.md を読み込んで architecture.md を作成してください。",
+        "prompt": "design-analysis.md を読み込んで architecture.md を作成してください。",
         "output_file": "architecture.md",
         "tab": "🏗️ 設計書",
     },
     {
         "name": "coder",
         "label": "💻 Coder",
-        "prompt_template": "architecture.md と design-analysis.md を読み込んで output/ ディレクトリにコードを生成してください。",
+        "prompt": "architecture.md と design-analysis.md を読み込んで output/ ディレクトリにコードを生成してください。",
         "output_file": None,
         "tab": "💻 生成コード",
     },
     {
         "name": "reviewer",
         "label": "🔍 Reviewer",
-        "prompt_template": "output/ のコードを design-analysis.md と照合してレビューし、問題があれば修正してください。review.md を作成してください。",
+        "prompt": "output/ のコードを design-analysis.md と照合してレビューし、問題があれば修正してください。review.md を作成してください。",
         "output_file": "review.md",
         "tab": "🔍 レビュー結果",
     },
 ]
 
-TAB_NAMES = [a["tab"] for a in AGENTS]
+
+def build_designer_prompt(figma_url: str | None, image_paths: list[str] | None) -> str:
+    """Designer エージェント用のプロンプトを構築する。"""
+    if figma_url:
+        return f"以下のFigma URLのデザインを分析して design-analysis.md を作成してください:\n{figma_url}"
+
+    if image_paths:
+        paths_str = "\n".join(f"- {p}" for p in image_paths)
+        return (
+            f"以下のデザイン画像ファイルを Read ツールで読み込んで分析し、design-analysis.md を作成してください。\n"
+            f"画像ファイル:\n{paths_str}"
+        )
+
+    return ""
+
+
+def save_uploaded_images(uploaded_files) -> list[str]:
+    """アップロードされた画像をuploads/に保存し、フルパスのリストを返す。"""
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
+    paths = []
+    for uploaded in uploaded_files:
+        dest = os.path.join(UPLOADS_DIR, uploaded.name)
+        with open(dest, "wb") as f:
+            f.write(uploaded.getbuffer())
+        paths.append(dest)
+    return paths
 
 
 def run_claude_agent(agent_name: str, prompt: str, model_name: str) -> tuple[str, str]:
@@ -147,11 +172,37 @@ if not shutil.which("claude"):
     st.error("claude CLI が見つかりません。`npm install -g @anthropic-ai/claude-code` でインストールしてください。")
     st.stop()
 
-# ---------- メイン: URL入力 ----------
-figma_url = st.text_input(
-    "Figma URL を入力",
-    placeholder="https://www.figma.com/design/XXXXX/...",
+# ---------- 入力方法の選択 ----------
+input_mode = st.radio(
+    "入力方法を選択",
+    ["Figma URL", "画像アップロード"],
+    horizontal=True,
 )
+
+figma_url = None
+uploaded_images = None
+image_paths = None
+
+if input_mode == "Figma URL":
+    figma_url = st.text_input(
+        "Figma URL を入力",
+        placeholder="https://www.figma.com/design/XXXXX/...",
+    )
+    has_input = bool(figma_url)
+else:
+    uploaded_images = st.file_uploader(
+        "デザイン画像をアップロード（複数可）",
+        type=["png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+    )
+    has_input = bool(uploaded_images)
+
+    # プレビュー表示
+    if uploaded_images:
+        cols = st.columns(min(len(uploaded_images), 4))
+        for i, img in enumerate(uploaded_images):
+            with cols[i % 4]:
+                st.image(img, caption=img.name, use_container_width=True)
 
 # ---------- 実行モード選択 ----------
 col_auto, col_interactive = st.columns(2)
@@ -159,7 +210,7 @@ col_auto, col_interactive = st.columns(2)
 with col_auto:
     auto_run = st.button(
         "自動パイプライン実行",
-        disabled=not figma_url,
+        disabled=not has_input,
         type="primary",
         use_container_width=True,
         help="4エージェントを順番に自動実行します",
@@ -168,25 +219,30 @@ with col_auto:
 with col_interactive:
     interactive_run = st.button(
         "Claude Codeで開く (対話モード)",
-        disabled=not figma_url,
+        disabled=not has_input,
         use_container_width=True,
         help="ターミナルでClaude Codeの対話セッションを起動します",
     )
 
+# ---------- 画像の保存（実行時） ----------
+if (auto_run or interactive_run) and uploaded_images:
+    image_paths = save_uploaded_images(uploaded_images)
+
 # ---------- 対話モード: ターミナルで起動 ----------
-if interactive_run and figma_url:
-    prompt = f"以下のFigma URLのデザインを分析してコードを生成してください。designer → architect → coder → reviewer の順にエージェントを使ってください:\n{figma_url}"
+if interactive_run and has_input:
+    prompt = build_designer_prompt(figma_url, image_paths)
+    full_prompt = f"以下の入力からデザインを分析してコードを生成してください。designer → architect → coder → reviewer の順にエージェントを使ってください:\n{prompt}"
     apple_script = f'''
     tell application "Terminal"
         activate
-        do script "cd '{PROJECT_DIR}' && claude --dangerously-skip-permissions '{prompt}'"
+        do script "cd '{PROJECT_DIR}' && claude --dangerously-skip-permissions '{full_prompt}'"
     end tell
     '''
     subprocess.Popen(["osascript", "-e", apple_script])
     st.success("Terminal.app で Claude Code を起動しました。ターミナルを確認してください。")
 
 # ---------- 自動パイプライン実行 ----------
-if auto_run and figma_url:
+if auto_run and has_input:
     st.session_state.pipeline_done = False
     st.session_state.all_outputs = {}
     st.session_state.error_msg = None
@@ -205,7 +261,6 @@ if auto_run and figma_url:
     progress_bar = st.progress(0.0)
     log_area = st.empty()
 
-    # 各エージェント完了時にすぐ結果を表示するためのコンテナ
     results_container = st.container()
     error_occurred = False
 
@@ -220,7 +275,10 @@ if auto_run and figma_url:
         log_area.markdown(f"**{label}** を実行中...")
 
         # プロンプト構築
-        prompt = agent["prompt_template"].format(url=figma_url)
+        if name == "designer":
+            prompt = build_designer_prompt(figma_url, image_paths)
+        else:
+            prompt = agent["prompt"]
 
         try:
             stdout, stderr = run_claude_agent(name, prompt, model)
@@ -236,7 +294,7 @@ if auto_run and figma_url:
 
             # 完了したエージェントの結果をすぐに表示
             with results_container:
-                st.markdown(f"---")
+                st.markdown("---")
                 st.subheader(f"{label} — 完了")
                 if output_file:
                     content = read_file_safe(output_file)
@@ -246,7 +304,6 @@ if auto_run and figma_url:
                         with st.expander("結果を表示", expanded=True):
                             st.markdown(content)
                 else:
-                    # coder: output/ ディレクトリ
                     files = list_output_files()
                     if files:
                         st.caption(f"📁 {os.path.join(PROJECT_DIR, 'output/')}")
@@ -290,7 +347,6 @@ if auto_run and figma_url:
                 fp = os.path.join(PROJECT_DIR, "output/")
                 exists = "✅" if os.path.isdir(fp) else "❌"
                 st.markdown(f"- {exists} `{fp}`")
-                # output内の個別ファイルも表示
                 for fpath, _ in list_output_files():
                     st.markdown(f"  - `{fpath}`")
 
