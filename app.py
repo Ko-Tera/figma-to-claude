@@ -194,7 +194,7 @@ st.set_page_config(
     page_title="Figma to Code",
     page_icon="",
     layout="centered",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 # ---------- Notion風カスタムCSS ----------
@@ -390,7 +390,94 @@ st.markdown("""
     section[data-testid="stSidebar"] {
         background-color: #f0efeb;
         border-right: none;
+        min-width: 260px;
     }
+    section[data-testid="stSidebar"] .block-container {
+        padding-top: 1.5rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    /* サイドバーセクション見出し */
+    .sb-section {
+        font-family: 'Inter', -apple-system, sans-serif;
+        font-size: 0.68rem;
+        font-weight: 500;
+        color: #9b9a97;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 1.4rem 0 0.5rem 0;
+        padding: 0;
+    }
+    .sb-section:first-child {
+        margin-top: 0;
+    }
+
+    /* サイドバーリストアイテム */
+    .sb-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3rem 0.5rem;
+        margin: 1px 0;
+        border-radius: 4px;
+        font-family: 'Inter', -apple-system, sans-serif;
+        font-size: 0.8rem;
+        color: #37352f;
+        transition: background 0.1s;
+        cursor: default;
+    }
+    .sb-item:hover {
+        background: #e9e8e4;
+    }
+    .sb-item-icon {
+        width: 18px;
+        height: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.72rem;
+        color: #9b9a97;
+        flex-shrink: 0;
+    }
+    .sb-item-text {
+        flex: 1;
+        font-size: 0.8rem;
+    }
+    .sb-item-meta {
+        font-size: 0.68rem;
+        color: #c4c3bf;
+        font-family: 'SFMono-Regular', 'Menlo', monospace;
+    }
+
+    /* サイドバーステータスドット */
+    .sb-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .sb-dot-idle { background: #d6d5d1; }
+    .sb-dot-ok { background: #6b7b6e; }
+    .sb-dot-none { background: #d6d5d1; opacity: 0.5; }
+
+    /* サイドバー区切り */
+    .sb-divider {
+        height: 1px;
+        background: #e3e2de;
+        margin: 0.8rem 0;
+    }
+
+    /* サイドバーフッター */
+    .sb-footer {
+        font-family: 'Inter', -apple-system, sans-serif;
+        font-size: 0.68rem;
+        color: #c4c3bf;
+        margin-top: 1.5rem;
+        padding: 0.5rem;
+        line-height: 1.5;
+    }
+
     section[data-testid="stSidebar"] h4 {
         font-family: 'Inter', -apple-system, sans-serif !important;
         font-size: 0.72rem !important;
@@ -467,8 +554,69 @@ st.markdown('<p class="notion-sub">Paste a Figma URL or upload design images to 
 
 # ---------- サイドバー ----------
 with st.sidebar:
-    st.markdown("#### Exports")
+    # -- Pipeline セクション --
+    st.markdown('<div class="sb-section">Pipeline</div>', unsafe_allow_html=True)
+    for agent in AGENTS:
+        out = agent["output_file"]
+        if out:
+            exists = os.path.exists(os.path.join(PROJECT_DIR, out))
+        else:
+            exists = os.path.isdir(os.path.join(PROJECT_DIR, "output"))
+        dot_cls = "sb-dot-ok" if exists else "sb-dot-idle"
+        file_label = out if out else "output/"
+        st.markdown(
+            f'<div class="sb-item">'
+            f'<span class="sb-dot {dot_cls}"></span>'
+            f'<span class="sb-item-text">{agent["label"]}</span>'
+            f'<span class="sb-item-meta">{file_label}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
+
+    # -- Output Files セクション --
+    st.markdown('<div class="sb-section">Output Files</div>', unsafe_allow_html=True)
+    output_files_map = [
+        ("design-analysis.md", "Design Analysis"),
+        ("architecture.md", "Architecture"),
+        ("output/", "Generated Code"),
+        ("review.md", "Review"),
+    ]
+    for fname, flabel in output_files_map:
+        fpath = os.path.join(PROJECT_DIR, fname)
+        if fname.endswith("/"):
+            exists = os.path.isdir(fpath)
+            count = len(list_output_files()) if exists else 0
+            meta = f"{count} files" if exists else "--"
+        else:
+            exists = os.path.exists(fpath)
+            if exists:
+                size = os.path.getsize(fpath)
+                if size < 1024:
+                    meta = f"{size} B"
+                else:
+                    meta = f"{size // 1024} KB"
+            else:
+                meta = "--"
+        dot_cls = "sb-dot-ok" if exists else "sb-dot-none"
+        st.markdown(
+            f'<div class="sb-item">'
+            f'<span class="sb-dot {dot_cls}"></span>'
+            f'<span class="sb-item-text">{flabel}</span>'
+            f'<span class="sb-item-meta">{meta}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
+
+    # -- Exports セクション --
     exports = list_exports()
+    st.markdown(
+        f'<div class="sb-section">Exports ({len(exports)})</div>',
+        unsafe_allow_html=True,
+    )
     if exports:
         for fname, fpath in exports:
             with open(fpath, "rb") as f:
@@ -481,7 +629,47 @@ with st.sidebar:
                     use_container_width=True,
                 )
     else:
-        st.markdown('<p style="font-size:0.8rem; color:#9b9a97;">No exports yet.</p>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sb-item">'
+            '<span class="sb-item-text" style="color:#c4c3bf;">No exports yet</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
+
+    # -- Settings セクション --
+    st.markdown('<div class="sb-section">Settings</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="sb-item">'
+        f'<span class="sb-item-text">Model</span>'
+        f'<span class="sb-item-meta">{MODEL}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div class="sb-item">'
+        f'<span class="sb-item-text">Timeout</span>'
+        f'<span class="sb-item-meta">600s</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div class="sb-item">'
+        f'<span class="sb-item-text">Auto-approve</span>'
+        f'<span class="sb-item-meta">on</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # -- フッター --
+    st.markdown(
+        '<div class="sb-footer">'
+        'Figma to Code v1.0<br>'
+        'Powered by Claude Code CLI'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 # ---------- claude CLI チェック ----------
 if not shutil.which("claude"):
