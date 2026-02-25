@@ -202,7 +202,7 @@ st.markdown("""
 <style>
     /* 全体 */
     .stApp {
-        background-color: #ffffff;
+        background-color: #f7f7f8;
     }
     .block-container {
         max-width: 720px;
@@ -272,7 +272,7 @@ st.markdown("""
     /* ボタン */
     .stButton > button[kind="primary"] {
         background-color: #1a1a1a !important;
-        color: #ffffff !important;
+        color: #f5f5f5 !important;
         border: none !important;
         border-radius: 8px !important;
         padding: 0.55rem 1.5rem !important;
@@ -308,7 +308,7 @@ st.markdown("""
     .stTextInput > div > div > input:focus {
         border-color: #1a1a1a !important;
         box-shadow: none !important;
-        background: #ffffff !important;
+        background: #f7f7f8 !important;
     }
 
     /* ラジオ */

@@ -71,33 +71,33 @@ def run_pipeline(source: str) -> dict:
     results = {}
 
     # Stage 1: Designer
-    print("\n[1/4] 🎨 Designer — デザインを分析中...")
+    print("\n[1/4] Designer -- analyzing design...")
     results["designer"] = run_agent("designer", build_designer_prompt(source))
-    print("  ✅ design-analysis.md を作成しました")
+    print("  done: design-analysis.md")
 
     # Stage 2: Architect
-    print("\n[2/4] 🏗️ Architect — コンポーネントを設計中...")
+    print("\n[2/4] Architect -- designing components...")
     results["architect"] = run_agent(
         "architect",
         "design-analysis.md を読み込んで architecture.md を作成してください。",
     )
-    print("  ✅ architecture.md を作成しました")
+    print("  done: architecture.md")
 
     # Stage 3: Coder
-    print("\n[3/4] 💻 Coder — コードを生成中...")
+    print("\n[3/4] Coder -- generating code...")
     results["coder"] = run_agent(
         "coder",
         "architecture.md と design-analysis.md を読み込んで output/ ディレクトリにコードを生成してください。",
     )
-    print("  ✅ output/ にコードを生成しました")
+    print("  done: output/")
 
     # Stage 4: Reviewer
-    print("\n[4/4] 🔍 Reviewer — コードをレビュー中...")
+    print("\n[4/4] Reviewer -- reviewing code...")
     results["reviewer"] = run_agent(
         "reviewer",
         "output/ のコードを design-analysis.md と照合してレビューし、問題があれば修正してください。review.md を作成してください。",
     )
-    print("  ✅ review.md を作成しました")
+    print("  done: review.md")
 
     return results
 
@@ -176,24 +176,24 @@ def main():
     try:
         run_pipeline(source)
     except Exception as e:
-        print(f"\n❌ エラー: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
 
     # exports/ に ZIP を保存
     zip_data = build_zip()
     if zip_data:
         export_path = save_to_exports(zip_data)
-        print(f"\n📦 エクスポート保存: {export_path}")
+        print(f"\nExported: {export_path}")
 
     print("\n" + "=" * 50)
-    print("🎉 全工程完了!")
+    print("All steps completed.")
     print("=" * 50)
-    print(f"  📄 design-analysis.md — デザイン分析")
-    print(f"  📄 architecture.md    — 設計書")
-    print(f"  📁 output/            — 生成コード")
-    print(f"  📄 review.md          — レビュー結果")
+    print(f"  design-analysis.md  -- design analysis")
+    print(f"  architecture.md     -- architecture")
+    print(f"  output/             -- generated code")
+    print(f"  review.md           -- review")
     if zip_data:
-        print(f"  📦 {export_path}  — ZIPアーカイブ")
+        print(f"  {export_path}  -- zip archive")
 
 
 if __name__ == "__main__":
