@@ -1,4 +1,4 @@
-"""Figma → Claude Code ランチャー — Streamlit UI
+"""Figma to Claude Code — Streamlit UI
 
 Figma URL または デザイン画像を入力すると、Claude Code CLIの4エージェントを順番に実行し、
 デザイン → 設計 → コード生成 → レビューを自動で行う。
@@ -89,7 +89,7 @@ def list_output_files() -> list[tuple[str, str]]:
                     content = f.read()
                 files.append((full, content))
             except (UnicodeDecodeError, OSError):
-                files.append((full, "(バイナリファイル)"))
+                files.append((full, "(binary)"))
     return files
 
 
@@ -156,112 +156,315 @@ def build_zip() -> bytes | None:
     return buf.getvalue()
 
 
+# ---------- エージェント定義 ----------
+AGENTS = [
+    {
+        "name": "designer",
+        "label": "Designer",
+        "desc": "デザイン分析",
+        "output_file": "design-analysis.md",
+    },
+    {
+        "name": "architect",
+        "label": "Architect",
+        "desc": "コンポーネント設計",
+        "prompt": "design-analysis.md を読み込んで architecture.md を作成してください。",
+        "output_file": "architecture.md",
+    },
+    {
+        "name": "coder",
+        "label": "Coder",
+        "desc": "コード生成",
+        "prompt": "architecture.md と design-analysis.md を読み込んで output/ ディレクトリにコードを生成してください。",
+        "output_file": None,
+    },
+    {
+        "name": "reviewer",
+        "label": "Reviewer",
+        "desc": "レビュー + 自動修正",
+        "prompt": "output/ のコードを design-analysis.md と照合してレビューし、問題があれば修正してください。review.md を作成してください。",
+        "output_file": "review.md",
+    },
+]
+
+MODEL = "opus"
+
 # ---------- ページ設定 ----------
 st.set_page_config(
-    page_title="Figma → Claude Code",
-    page_icon="🎨",
-    layout="wide",
+    page_title="Figma to Code",
+    page_icon="",
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
+
+# ---------- カスタムCSS ----------
+st.markdown("""
+<style>
+    /* 全体 */
+    .stApp {
+        background-color: #ffffff;
+    }
+    .block-container {
+        max-width: 720px;
+        padding-top: 3rem;
+        padding-bottom: 4rem;
+    }
+
+    /* ヘッダー */
+    h1 {
+        font-weight: 600 !important;
+        font-size: 1.6rem !important;
+        letter-spacing: -0.02em;
+        color: #1a1a1a !important;
+    }
+
+    /* サブテキスト */
+    .subtle {
+        color: #8c8c8c;
+        font-size: 0.85rem;
+        margin-bottom: 2rem;
+    }
+
+    /* ステップインジケーター */
+    .steps {
+        display: flex;
+        gap: 0;
+        margin: 1.5rem 0;
+        align-items: center;
+    }
+    .step {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.78rem;
+        color: #b0b0b0;
+        transition: color 0.2s;
+    }
+    .step.active {
+        color: #1a1a1a;
+        font-weight: 500;
+    }
+    .step.done {
+        color: #10b981;
+    }
+    .step-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #e0e0e0;
+        flex-shrink: 0;
+    }
+    .step.active .step-dot {
+        background: #1a1a1a;
+        box-shadow: 0 0 0 3px rgba(26,26,26,0.1);
+    }
+    .step.done .step-dot {
+        background: #10b981;
+    }
+    .step-line {
+        width: 24px;
+        height: 1px;
+        background: #e5e5e5;
+        margin: 0 8px;
+        flex-shrink: 0;
+    }
+
+    /* ボタン */
+    .stButton > button[kind="primary"] {
+        background-color: #1a1a1a !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.55rem 1.5rem !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        transition: background 0.15s;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: #333333 !important;
+    }
+    .stButton > button[kind="secondary"] {
+        background-color: transparent !important;
+        color: #666666 !important;
+        border: 1px solid #e5e5e5 !important;
+        border-radius: 8px !important;
+        padding: 0.55rem 1.5rem !important;
+        font-weight: 400 !important;
+        font-size: 0.85rem !important;
+    }
+    .stButton > button[kind="secondary"]:hover {
+        border-color: #cccccc !important;
+        color: #1a1a1a !important;
+    }
+
+    /* 入力フィールド */
+    .stTextInput > div > div > input {
+        border: 1px solid #e5e5e5 !important;
+        border-radius: 8px !important;
+        padding: 0.6rem 0.9rem !important;
+        font-size: 0.85rem !important;
+        background: #fafafa !important;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #1a1a1a !important;
+        box-shadow: none !important;
+        background: #ffffff !important;
+    }
+
+    /* ラジオ */
+    .stRadio > div {
+        gap: 0.5rem;
+    }
+
+    /* Expander */
+    .streamlit-expanderHeader {
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        color: #444444 !important;
+    }
+
+    /* ファイルアップローダー */
+    .stFileUploader > div > div {
+        border: 1px dashed #d5d5d5 !important;
+        border-radius: 8px !important;
+        background: #fafafa !important;
+    }
+
+    /* 結果カード */
+    .result-card {
+        border: 1px solid #f0f0f0;
+        border-radius: 10px;
+        padding: 1.2rem 1.4rem;
+        margin: 0.6rem 0;
+        background: #fafafa;
+    }
+    .result-card h4 {
+        margin: 0 0 0.4rem 0;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #1a1a1a;
+    }
+    .result-card .path {
+        font-size: 0.75rem;
+        color: #999;
+        font-family: 'SF Mono', 'Menlo', monospace;
+    }
+
+    /* プログレス */
+    .stProgress > div > div > div {
+        background-color: #1a1a1a !important;
+    }
+
+    /* サイドバー */
+    section[data-testid="stSidebar"] {
+        background-color: #fafafa;
+        border-right: 1px solid #f0f0f0;
+    }
+    section[data-testid="stSidebar"] .block-container {
+        padding-top: 2rem;
+    }
+
+    /* divider */
+    hr {
+        border-color: #f0f0f0 !important;
+    }
+
+    /* download button */
+    .stDownloadButton > button {
+        background-color: transparent !important;
+        color: #1a1a1a !important;
+        border: 1px solid #e5e5e5 !important;
+        border-radius: 8px !important;
+        font-size: 0.8rem !important;
+        font-weight: 400 !important;
+    }
+    .stDownloadButton > button:hover {
+        border-color: #1a1a1a !important;
+    }
+
+    /* 成功メッセージ */
+    .stSuccess {
+        background-color: #f0fdf4 !important;
+        border: 1px solid #bbf7d0 !important;
+        color: #166534 !important;
+        border-radius: 8px !important;
+    }
+
+    /* info */
+    .stInfo {
+        background-color: #f8f9fa !important;
+        border: 1px solid #e9ecef !important;
+        color: #495057 !important;
+        border-radius: 8px !important;
+    }
+
+    /* ラベル非表示 */
+    .stRadio > label, .stTextInput > label, .stFileUploader > label {
+        font-size: 0.8rem !important;
+        color: #888 !important;
+        font-weight: 400 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ---------- セッションステート初期化 ----------
 if "pipeline_done" not in st.session_state:
     st.session_state.pipeline_done = False
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = None
 if "all_outputs" not in st.session_state:
     st.session_state.all_outputs = {}
 if "error_msg" not in st.session_state:
     st.session_state.error_msg = None
 
 # ---------- ヘッダー ----------
-st.title("Figma → Claude Code")
-st.caption("Figma URL またはデザイン画像からClaude Codeが自動でコードを生成します")
+st.markdown("# Figma to Code")
+st.markdown('<p class="subtle">Figma URL or design images &rarr; production-ready code, automatically.</p>', unsafe_allow_html=True)
 
-# ---------- サイドバー ----------
+# ---------- サイドバー（最小限） ----------
 with st.sidebar:
-    st.header("エージェント パイプライン")
-    st.markdown("""
-| # | エージェント | 処理内容 |
-|---|------------|---------|
-| 1 | 🎨 **Designer** | デザイン分析 |
-| 2 | 🏗️ **Architect** | コンポーネント設計 |
-| 3 | 💻 **Coder** | コード生成 |
-| 4 | 🔍 **Reviewer** | レビュー + 自動修正 |
-""")
-    st.divider()
-    st.markdown("### 出力ファイル")
-    st.markdown(f"""
-- `{PROJECT_DIR}/design-analysis.md`
-- `{PROJECT_DIR}/architecture.md`
-- `{PROJECT_DIR}/output/`
-- `{PROJECT_DIR}/review.md`
-""")
-
-    st.divider()
-    model = st.selectbox(
-        "Claude Model",
-        ["sonnet", "opus", "haiku"],
-        index=0,
-    )
-
-    # 過去のエクスポート一覧
+    st.markdown("#### Exports")
     exports = list_exports()
     if exports:
-        st.divider()
-        st.markdown(f"### 過去のエクスポート ({len(exports)}件)")
         for fname, fpath in exports:
             with open(fpath, "rb") as f:
                 st.download_button(
-                    label=f"📦 {fname}",
+                    label=fname,
                     data=f.read(),
                     file_name=fname,
                     mime="application/zip",
                     key=f"export_{fname}",
                     use_container_width=True,
                 )
-
-# ---------- エージェント定義 ----------
-AGENTS = [
-    {
-        "name": "designer",
-        "label": "🎨 Designer",
-        "output_file": "design-analysis.md",
-        "tab": "🎨 デザイン分析",
-    },
-    {
-        "name": "architect",
-        "label": "🏗️ Architect",
-        "prompt": "design-analysis.md を読み込んで architecture.md を作成してください。",
-        "output_file": "architecture.md",
-        "tab": "🏗️ 設計書",
-    },
-    {
-        "name": "coder",
-        "label": "💻 Coder",
-        "prompt": "architecture.md と design-analysis.md を読み込んで output/ ディレクトリにコードを生成してください。",
-        "output_file": None,
-        "tab": "💻 生成コード",
-    },
-    {
-        "name": "reviewer",
-        "label": "🔍 Reviewer",
-        "prompt": "output/ のコードを design-analysis.md と照合してレビューし、問題があれば修正してください。review.md を作成してください。",
-        "output_file": "review.md",
-        "tab": "🔍 レビュー結果",
-    },
-]
-
+    else:
+        st.caption("No exports yet.")
 
 # ---------- claude CLI チェック ----------
 if not shutil.which("claude"):
-    st.error("claude CLI が見つかりません。`npm install -g @anthropic-ai/claude-code` でインストールしてください。")
+    st.error("claude CLI not found. Run `npm install -g @anthropic-ai/claude-code`")
     st.stop()
 
-# ---------- 入力方法の選択 ----------
+# ---------- パイプラインステップ表示 ----------
+def render_steps(current: int = -1, done_count: int = 0):
+    """ステップインジケーターをレンダリングする。"""
+    parts = []
+    for i, agent in enumerate(AGENTS):
+        cls = "step"
+        if i < done_count:
+            cls += " done"
+        elif i == current:
+            cls += " active"
+        parts.append(f'<div class="{cls}"><span class="step-dot"></span>{agent["label"]}</div>')
+        if i < len(AGENTS) - 1:
+            parts.append('<div class="step-line"></div>')
+    return f'<div class="steps">{"".join(parts)}</div>'
+
+st.markdown(render_steps(), unsafe_allow_html=True)
+
+# ---------- 入力 ----------
 input_mode = st.radio(
-    "入力方法を選択",
-    ["Figma URL", "画像アップロード"],
+    "Input",
+    ["Figma URL", "Image Upload"],
     horizontal=True,
+    label_visibility="collapsed",
 )
 
 figma_url = None
@@ -270,50 +473,51 @@ image_paths = None
 
 if input_mode == "Figma URL":
     figma_url = st.text_input(
-        "Figma URL を入力",
-        placeholder="https://www.figma.com/design/XXXXX/...",
+        "Figma URL",
+        placeholder="https://www.figma.com/design/...",
+        label_visibility="collapsed",
     )
     has_input = bool(figma_url)
 else:
     uploaded_images = st.file_uploader(
-        "デザイン画像をアップロード（複数可）",
+        "Upload images",
         type=["png", "jpg", "jpeg", "webp"],
         accept_multiple_files=True,
+        label_visibility="collapsed",
     )
     has_input = bool(uploaded_images)
 
-    # プレビュー表示
     if uploaded_images:
         cols = st.columns(min(len(uploaded_images), 4))
         for i, img in enumerate(uploaded_images):
             with cols[i % 4]:
                 st.image(img, caption=img.name, use_container_width=True)
 
-# ---------- 実行モード選択 ----------
-col_auto, col_interactive = st.columns(2)
+# ---------- アクションボタン ----------
+st.markdown("<div style='height: 0.5rem'></div>", unsafe_allow_html=True)
+col1, col2 = st.columns([2, 1])
 
-with col_auto:
+with col1:
     auto_run = st.button(
-        "自動パイプライン実行",
+        "Generate Code",
         disabled=not has_input,
         type="primary",
         use_container_width=True,
-        help="4エージェントを順番に自動実行します",
     )
 
-with col_interactive:
+with col2:
     interactive_run = st.button(
-        "Claude Codeで開く (対話モード)",
+        "Open in Terminal",
         disabled=not has_input,
+        type="secondary",
         use_container_width=True,
-        help="ターミナルでClaude Codeの対話セッションを起動します",
     )
 
 # ---------- 画像の保存（実行時） ----------
 if (auto_run or interactive_run) and uploaded_images:
     image_paths = save_uploaded_images(uploaded_images)
 
-# ---------- 対話モード: ターミナルで起動 ----------
+# ---------- 対話モード ----------
 if interactive_run and has_input:
     prompt = build_designer_prompt(figma_url, image_paths)
     full_prompt = f"以下の入力からデザインを分析してコードを生成してください。designer → architect → coder → reviewer の順にエージェントを使ってください:\n{prompt}"
@@ -324,27 +528,19 @@ if interactive_run and has_input:
     end tell
     '''
     subprocess.Popen(["osascript", "-e", apple_script])
-    st.success("Terminal.app で Claude Code を起動しました。ターミナルを確認してください。")
+    st.success("Claude Code launched in Terminal.")
 
 # ---------- 自動パイプライン実行 ----------
 if auto_run and has_input:
     st.session_state.pipeline_done = False
     st.session_state.all_outputs = {}
     st.session_state.error_msg = None
-    st.session_state.active_tab = None
 
-    st.divider()
-
-    # ステージ表示
-    stage_cols = st.columns(4)
-    stage_status = {}
-    for i, agent in enumerate(AGENTS):
-        with stage_cols[i]:
-            stage_status[agent["name"]] = st.empty()
-            stage_status[agent["name"]].info(f"⏳ {agent['label']}")
+    st.markdown("<div style='height: 1rem'></div>", unsafe_allow_html=True)
 
     progress_bar = st.progress(0.0)
-    log_area = st.empty()
+    status_text = st.empty()
+    step_display = st.empty()
 
     results_container = st.container()
     error_occurred = False
@@ -354,10 +550,10 @@ if auto_run and has_input:
         label = agent["label"]
         output_file = agent["output_file"]
 
-        # ステータス更新: 実行中
-        stage_status[name].warning(f"⚙️ {label} 実行中...")
+        # ステップ表示更新
+        step_display.markdown(render_steps(current=i, done_count=i), unsafe_allow_html=True)
         progress_bar.progress(i / 4)
-        log_area.markdown(f"**{label}** を実行中...")
+        status_text.markdown(f"<p style='color:#888; font-size:0.8rem;'>Running {label}...</p>", unsafe_allow_html=True)
 
         # プロンプト構築
         if name == "designer":
@@ -366,93 +562,79 @@ if auto_run and has_input:
             prompt = agent["prompt"]
 
         try:
-            stdout, stderr = run_claude_agent(name, prompt, model)
+            stdout, stderr = run_claude_agent(name, prompt, MODEL)
             st.session_state.all_outputs[name] = stdout
 
-            # ステータス更新: 完了 + 出力パス表示
-            if output_file:
-                full_path = os.path.join(PROJECT_DIR, output_file)
-                stage_status[name].success(f"✅ {label}\n`{full_path}`")
-            else:
-                full_path = os.path.join(PROJECT_DIR, "output/")
-                stage_status[name].success(f"✅ {label}\n`{full_path}`")
-
-            # 完了したエージェントの結果をすぐに表示
+            # 完了した結果を即座に表示
             with results_container:
-                st.markdown("---")
-                st.subheader(f"{label} — 完了")
                 if output_file:
                     content = read_file_safe(output_file)
                     if content:
                         full_path = os.path.join(PROJECT_DIR, output_file)
-                        st.caption(f"📄 {full_path}")
-                        with st.expander("結果を表示", expanded=True):
+                        st.markdown(
+                            f'<div class="result-card">'
+                            f'<h4>{label}</h4>'
+                            f'<p class="path">{full_path}</p>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                        with st.expander(f"{label} output", expanded=False):
                             st.markdown(content)
                 else:
                     files = list_output_files()
                     if files:
-                        st.caption(f"📁 {os.path.join(PROJECT_DIR, 'output/')}")
-                        st.markdown(f"**{len(files)} ファイル** が生成されました")
+                        st.markdown(
+                            f'<div class="result-card">'
+                            f'<h4>{label}</h4>'
+                            f'<p class="path">{os.path.join(PROJECT_DIR, "output/")} &mdash; {len(files)} files</p>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
                         for fpath, fcontent in files:
                             ext = os.path.splitext(fpath)[1].lstrip(".")
                             lang = {
                                 "tsx": "tsx", "ts": "typescript", "jsx": "jsx",
                                 "js": "javascript", "css": "css", "json": "json",
                             }.get(ext, "")
-                            with st.expander(f"📄 {fpath}"):
+                            with st.expander(os.path.basename(fpath)):
                                 st.code(fcontent, language=lang)
 
         except subprocess.TimeoutExpired:
-            stage_status[name].error(f"❌ {label} タイムアウト")
-            log_area.error(f"{label} がタイムアウトしました（600秒）")
-            st.session_state.error_msg = f"{label} がタイムアウト"
+            status_text.markdown(f"<p style='color:#dc2626; font-size:0.8rem;'>{label} timed out (600s)</p>", unsafe_allow_html=True)
+            st.session_state.error_msg = f"{label} timed out"
             error_occurred = True
             break
         except Exception as e:
-            stage_status[name].error(f"❌ {label} エラー")
-            log_area.error(f"{label} でエラー: {e}")
+            status_text.markdown(f"<p style='color:#dc2626; font-size:0.8rem;'>{label}: {e}</p>", unsafe_allow_html=True)
             st.session_state.error_msg = str(e)
             error_occurred = True
             break
 
     if not error_occurred:
         progress_bar.progress(1.0)
-        log_area.empty()
+        step_display.markdown(render_steps(current=-1, done_count=4), unsafe_allow_html=True)
+        status_text.empty()
         st.session_state.pipeline_done = True
-        st.success("🎉 全工程が完了しました!")
 
-        # 全出力ファイルのフルパス一覧
-        st.markdown("### 出力ファイル一覧")
-        for agent in AGENTS:
-            if agent["output_file"]:
-                fp = os.path.join(PROJECT_DIR, agent["output_file"])
-                exists = "✅" if os.path.exists(fp) else "❌"
-                st.markdown(f"- {exists} `{fp}`")
-            else:
-                fp = os.path.join(PROJECT_DIR, "output/")
-                exists = "✅" if os.path.isdir(fp) else "❌"
-                st.markdown(f"- {exists} `{fp}`")
-                for fpath, _ in list_output_files():
-                    st.markdown(f"  - `{fpath}`")
+        st.markdown("<div style='height: 0.5rem'></div>", unsafe_allow_html=True)
+        st.success("All steps completed.")
 
-        # ZIPダウンロード + exports保存
-        st.markdown("### 一括ダウンロード")
+        # ZIP + exports
         zip_data = build_zip()
         if zip_data:
             export_path = save_to_exports(zip_data)
-            st.info(f"📦 エクスポート保存: `{export_path}`")
+            st.markdown(f"<p style='color:#888; font-size:0.75rem;'>Saved to {export_path}</p>", unsafe_allow_html=True)
             st.download_button(
-                label="全ファイルをZIPでダウンロード",
+                label="Download all as ZIP",
                 data=zip_data,
                 file_name=os.path.basename(export_path),
                 mime="application/zip",
-                type="primary",
                 use_container_width=True,
             )
 
-    # エージェント実行ログ
-    with st.expander("エージェント実行ログ（raw output）"):
+    # raw log
+    with st.expander("Raw agent output"):
         for name, output in st.session_state.all_outputs.items():
             agent_label = next(a["label"] for a in AGENTS if a["name"] == name)
-            st.markdown(f"### {agent_label}")
+            st.markdown(f"**{agent_label}**")
             st.text(output[:5000] if len(output) > 5000 else output)
