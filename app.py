@@ -84,6 +84,7 @@ def run_claude_agent(agent_name: str, prompt: str, model_name: str) -> tuple[str
     cmd = [
         "claude",
         "--print",
+        "--dangerously-skip-permissions",
         "--agent", agent_name,
         "--model", model_name,
         prompt,
@@ -164,7 +165,7 @@ if interactive_run and figma_url:
     apple_script = f'''
     tell application "Terminal"
         activate
-        do script "cd '{PROJECT_DIR}' && claude '{prompt}'"
+        do script "cd '{PROJECT_DIR}' && claude --dangerously-skip-permissions '{prompt}'"
     end tell
     '''
     subprocess.Popen(["osascript", "-e", apple_script])
