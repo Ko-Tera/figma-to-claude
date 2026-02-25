@@ -37,3 +37,8 @@ uploads/
 design-analysis.md
 architecture.md
 review.md
+
+# Temp files from Figma
+figma-*.json
+figma-*.png
+screenshot_*.png
