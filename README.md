@@ -1,73 +1,70 @@
 # Figma → Claude Code
 
-FigmaデザインをClaude APIの4つのAIエージェントパイプラインで解析し、本番品質のReact/Next.jsコードを自動生成するアプリケーション。
+Figma URLを入力すると、Claude Code（Antigravity / VSCode）の4つのAIエージェントが自動でデザインを解析し、React/Next.jsコードを生成するブリッジアプリ。
 
-## 4つのAIエージェント
-
-| エージェント | 役割 | 入力 | 出力 |
-|---|---|---|---|
-| 🎨 **Designer** | Figmaデザイン分析 | Figma URL | デザイントークン・コンポーネント一覧 |
-| 🏗️ **Architect** | コンポーネント設計 | デザイン分析 | ファイル構成・Props定義・設計書 |
-| 💻 **Coder** | コード生成 | 設計書 + デザイン分析 | TSX + Tailwind CSSコード |
-| 🔍 **Reviewer** | 品質レビュー | 生成コード + デザイン分析 | スコア・指摘事項・改善提案 |
-
-## パイプラインフロー
+## 仕組み
 
 ```
-Figma URL → Designer → Architect → Coder → Reviewer → ZIP出力
+Figma URL
+    ↓
+🎨 Designer Agent  → Figma MCPでデザイン取得・分析 → design-analysis.md
+    ↓
+🏗️ Architect Agent → コンポーネント設計            → architecture.md
+    ↓
+💻 Coder Agent     → コード生成                     → output/
+    ↓
+🔍 Reviewer Agent  → 品質レビュー + 自動修正         → review.md
 ```
+
+各エージェントは Claude Code CLI (`claude`) を通じて実行され、Figma MCP でデザインデータに直接アクセスします。
 
 ## セットアップ
 
 ```bash
-# 依存関係インストール
-pip install -r requirements.txt
+# Claude Code CLI が必要
+npm install -g @anthropic-ai/claude-code
 
-# 環境変数設定
-cp .env.example .env
-# .env を編集して API キーを設定
+# Streamlit UI を使う場合
+pip install -r requirements.txt
 ```
 
-### 必要な環境変数
-
-| 変数名 | 説明 |
-|---|---|
-| `ANTHROPIC_API_KEY` | Claude API キー |
-| `FIGMA_ACCESS_TOKEN` | Figma パーソナルアクセストークン |
-
 ## 使い方
+
+### 方法1: Streamlit UI（ブラウザ）
 
 ```bash
 streamlit run app.py
 ```
 
-1. サイドバーでAPIキーを設定
-2. FigmaのURLを入力
-3. 「コード生成を開始」をクリック
-4. 4つのエージェントが順番に処理を実行
-5. 結果をタブで確認、ZIPでダウンロード
+- 「自動パイプライン実行」— 4エージェントを順番に自動実行
+- 「Claude Codeで開く」— ターミナルで対話モードのClaude Codeを起動
+
+### 方法2: CLIランチャー
+
+```bash
+python launcher.py https://www.figma.com/design/XXXXX/...
+```
+
+### 方法3: Claude Code から直接
+
+```bash
+cd figma_to_claude
+claude
+# → "designer エージェントで https://... のデザインを分析して" と入力
+```
 
 ## プロジェクト構造
 
 ```
 figma_to_claude/
-├── app.py                  # Streamlit UI
-├── requirements.txt
-├── .env.example
-└── src/
-    ├── claude_client.py    # Claude API共通クライアント
-    ├── figma_client.py     # Figma REST APIクライアント
-    ├── pipeline.py         # パイプラインオーケストレーター
-    └── agents/
-        ├── designer_agent.py   # デザイナーエージェント
-        ├── architect_agent.py  # アーキテクトエージェント
-        ├── coder_agent.py      # コーダーエージェント
-        └── reviewer_agent.py   # レビュアーエージェント
+├── app.py                      # Streamlit UI
+├── launcher.py                 # CLIランチャー
+├── CLAUDE.md                   # Claude Code用プロジェクト説明
+├── .claude.json                # Figma MCP設定
+├── .claude/agents/
+│   ├── designer.md             # 🎨 デザイナーエージェント
+│   ├── architect.md            # 🏗️ アーキテクトエージェント
+│   ├── coder.md                # 💻 コーダーエージェント
+│   └── reviewer.md             # 🔍 レビュアーエージェント
+└── output/                     # 生成されたコード（実行後に作成）
 ```
-
-## 技術スタック
-
-- Python 3.11+
-- Anthropic Claude API（Sonnet / Haiku）
-- Figma REST API
-- Streamlit

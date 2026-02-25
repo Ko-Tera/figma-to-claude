@@ -1,16 +1,16 @@
-"""Figma to Claude Code — Streamlit UI"""
+"""Figma → Claude Code ランチャー — Streamlit UI
 
-import json
+Figma URLを入力すると、Claude Code CLIの4エージェントを順番に実行し、
+デザイン → 設計 → コード生成 → レビューを自動で行う。
+"""
+
 import os
-
+import shutil
+import subprocess
 import streamlit as st
-from dotenv import load_dotenv
 
-from src.claude_client import ClaudeClient
-from src.figma_client import FigmaClient
-from src.pipeline import Pipeline, PipelineResult, STAGES
-
-load_dotenv()
+# プロジェクトルート
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ---------- ページ設定 ----------
 st.set_page_config(
@@ -19,285 +19,255 @@ st.set_page_config(
     layout="wide",
 )
 
-# ---------- カスタムCSS ----------
-st.markdown("""
-<style>
-.agent-card {
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    padding: 16px;
-    margin: 8px 0;
-    background: #fafafa;
-}
-.agent-card.active {
-    border-color: #6366f1;
-    background: #eef2ff;
-}
-.agent-card.done {
-    border-color: #22c55e;
-    background: #f0fdf4;
-}
-.stage-indicator {
-    display: flex;
-    justify-content: space-between;
-    margin: 20px 0;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # ---------- ヘッダー ----------
 st.title("Figma → Claude Code")
-st.caption("Figmaデザインを4つのAIエージェントで解析し、本番品質のコードを自動生成")
+st.caption("Figma URLを入力するとClaude Codeが自動でデザインからコードを生成します")
 
-# ---------- サイドバー: 設定 ----------
+# ---------- サイドバー ----------
 with st.sidebar:
-    st.header("設定")
-
-    anthropic_key = st.text_input(
-        "Anthropic API Key",
-        value=os.environ.get("ANTHROPIC_API_KEY", ""),
-        type="password",
-        help="Claude APIのキー（sk-ant-...）",
-    )
-    figma_token = st.text_input(
-        "Figma Access Token",
-        value=os.environ.get("FIGMA_ACCESS_TOKEN", ""),
-        type="password",
-        help="Figmaのパーソナルアクセストークン",
-    )
-    model = st.selectbox(
-        "Claude Model",
-        ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"],
-        index=0,
-        help="使用するClaudeモデル",
-    )
+    st.header("エージェント パイプライン")
+    st.markdown("""
+| # | エージェント | 処理内容 |
+|---|------------|---------|
+| 1 | 🎨 **Designer** | Figma MCPでデザイン分析 |
+| 2 | 🏗️ **Architect** | コンポーネント設計 |
+| 3 | 💻 **Coder** | コード生成 |
+| 4 | 🔍 **Reviewer** | レビュー + 自動修正 |
+""")
+    st.divider()
+    st.markdown("### 出力ファイル")
+    st.markdown("""
+- `design-analysis.md` — デザイン分析
+- `architecture.md` — 設計書
+- `output/` — 生成コード
+- `review.md` — レビュー結果
+""")
 
     st.divider()
-    st.markdown("### エージェント一覧")
-    agents_info = [
-        ("🎨 Designer", "Figmaデザインを分析"),
-        ("🏗️ Architect", "コンポーネントを設計"),
-        ("💻 Coder", "コードを生成"),
-        ("🔍 Reviewer", "品質をレビュー"),
+    model = st.selectbox(
+        "Claude Model",
+        ["sonnet", "opus", "haiku"],
+        index=0,
+    )
+
+# ---------- エージェント定義 ----------
+AGENTS = [
+    {
+        "name": "designer",
+        "label": "🎨 Designer",
+        "prompt_template": "以下のFigma URLのデザインを分析して design-analysis.md を作成してください:\n{url}",
+        "output_file": "design-analysis.md",
+    },
+    {
+        "name": "architect",
+        "label": "🏗️ Architect",
+        "prompt_template": "design-analysis.md を読み込んで architecture.md を作成してください。",
+        "output_file": "architecture.md",
+    },
+    {
+        "name": "coder",
+        "label": "💻 Coder",
+        "prompt_template": "architecture.md と design-analysis.md を読み込んで output/ ディレクトリにコードを生成してください。",
+        "output_file": None,  # ディレクトリ
+    },
+    {
+        "name": "reviewer",
+        "label": "🔍 Reviewer",
+        "prompt_template": "output/ のコードを design-analysis.md と照合してレビューし、問題があれば修正してください。review.md を作成してください。",
+        "output_file": "review.md",
+    },
+]
+
+
+def run_claude_agent(agent_name: str, prompt: str, model_name: str) -> tuple[str, str]:
+    """Claude Code CLIでエージェントを実行する。stdout, stderrのタプルを返す。"""
+    cmd = [
+        "claude",
+        "--print",
+        "--agent", agent_name,
+        "--model", model_name,
+        prompt,
     ]
-    for name, desc in agents_info:
-        st.markdown(f"**{name}**  \n{desc}")
+    result = subprocess.run(
+        cmd,
+        cwd=PROJECT_DIR,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    return result.stdout, result.stderr
+
+
+def read_file_safe(path: str) -> str | None:
+    """ファイルが存在すれば中身を返す。"""
+    full = os.path.join(PROJECT_DIR, path)
+    if os.path.exists(full):
+        with open(full, encoding="utf-8") as f:
+            return f.read()
+    return None
+
+
+def list_output_files() -> list[tuple[str, str]]:
+    """output/ ディレクトリのファイル一覧を返す。(相対パス, 中身)"""
+    output_dir = os.path.join(PROJECT_DIR, "output")
+    if not os.path.isdir(output_dir):
+        return []
+    files = []
+    for root, _, names in os.walk(output_dir):
+        for name in sorted(names):
+            full = os.path.join(root, name)
+            rel = os.path.relpath(full, PROJECT_DIR)
+            try:
+                with open(full, encoding="utf-8") as f:
+                    content = f.read()
+                files.append((rel, content))
+            except (UnicodeDecodeError, OSError):
+                files.append((rel, "(バイナリファイル)"))
+    return files
+
+
+# ---------- claude CLI チェック ----------
+if not shutil.which("claude"):
+    st.error("claude CLI が見つかりません。`npm install -g @anthropic-ai/claude-code` でインストールしてください。")
+    st.stop()
 
 # ---------- メイン: URL入力 ----------
 figma_url = st.text_input(
-    "Figma URL",
+    "Figma URL を入力",
     placeholder="https://www.figma.com/design/XXXXX/...",
-    help="FigmaファイルまたはフレームのURLを入力",
 )
 
-# ---------- 実行ボタン ----------
-can_run = bool(figma_url and anthropic_key and figma_token)
+# ---------- 実行モード選択 ----------
+col_auto, col_interactive = st.columns(2)
 
-if not can_run:
-    if not anthropic_key:
-        st.warning("サイドバーでAnthropic API Keyを設定してください")
-    if not figma_token:
-        st.warning("サイドバーでFigma Access Tokenを設定してください")
+with col_auto:
+    auto_run = st.button(
+        "自動パイプライン実行",
+        disabled=not figma_url,
+        type="primary",
+        use_container_width=True,
+        help="4エージェントを順番に自動実行します",
+    )
 
-if st.button("コード生成を開始", disabled=not can_run, type="primary", use_container_width=True):
-    # 進捗表示用
-    progress_bar = st.progress(0.0)
-    status_text = st.empty()
-    stage_cols = st.columns(5)
-    stage_placeholders = {}
-    for i, (stage_id, stage_label) in enumerate(STAGES[:-1]):
+with col_interactive:
+    interactive_run = st.button(
+        "Claude Codeで開く (対話モード)",
+        disabled=not figma_url,
+        use_container_width=True,
+        help="ターミナルでClaude Codeの対話セッションを起動します",
+    )
+
+# ---------- 対話モード: ターミナルで起動 ----------
+if interactive_run and figma_url:
+    prompt = f"以下のFigma URLのデザインを分析してコードを生成してください。designer → architect → coder → reviewer の順にエージェントを使ってください:\n{figma_url}"
+    # macOS: Terminal.app で claude を起動
+    apple_script = f'''
+    tell application "Terminal"
+        activate
+        do script "cd '{PROJECT_DIR}' && claude '{prompt}'"
+    end tell
+    '''
+    subprocess.Popen(["osascript", "-e", apple_script])
+    st.success("Terminal.app で Claude Code を起動しました。ターミナルを確認してください。")
+
+# ---------- 自動パイプライン実行 ----------
+if auto_run and figma_url:
+    st.divider()
+
+    # ステージ表示
+    stage_cols = st.columns(4)
+    stage_status = {}
+    for i, agent in enumerate(AGENTS):
         with stage_cols[i]:
-            stage_placeholders[stage_id] = st.empty()
-            stage_placeholders[stage_id].info(f"⏳ {stage_label.replace('...', '')}")
+            stage_status[agent["name"]] = st.empty()
+            stage_status[agent["name"]].info(f"⏳ {agent['label']}")
 
-    def on_progress(stage: str, message: str, progress: float) -> None:
-        if progress >= 0:
-            progress_bar.progress(progress)
-        status_text.markdown(f"**{message}**")
+    progress_bar = st.progress(0.0)
+    log_area = st.empty()
 
-        # ステージ表示を更新
-        stage_order = [s[0] for s in STAGES[:-1]]
-        if stage in stage_order:
-            idx = stage_order.index(stage)
-            # 完了したステージを緑にする
-            for i in range(idx):
-                sid = stage_order[i]
-                if sid in stage_placeholders:
-                    stage_placeholders[sid].success(f"✅ {STAGES[i][1].replace('...', '')}")
-            # 現在のステージ
-            if stage in stage_placeholders:
-                if progress >= (idx + 1) / 5:
-                    stage_placeholders[stage].success(f"✅ {STAGES[stage_order.index(stage)][1].replace('...', '')}")
-                else:
-                    stage_placeholders[stage].warning(f"⚙️ {message}")
+    all_outputs = {}
+    error_occurred = False
 
-    # パイプライン実行
-    try:
-        claude = ClaudeClient(api_key=anthropic_key, model=model)
-        figma = FigmaClient(access_token=figma_token)
-        pipeline = Pipeline(claude, figma, on_progress=on_progress)
+    for i, agent in enumerate(AGENTS):
+        name = agent["name"]
+        label = agent["label"]
 
-        result: PipelineResult = pipeline.run(figma_url)
+        # ステータス更新: 実行中
+        stage_status[name].warning(f"⚙️ {label} 実行中...")
+        progress_bar.progress(i / 4)
+        log_area.markdown(f"**{label}** を実行中...")
 
-        if result.error:
-            st.error(f"エラーが発生しました: {result.error}")
+        # プロンプト構築
+        prompt = agent["prompt_template"].format(url=figma_url)
+
+        try:
+            stdout, stderr = run_claude_agent(name, prompt, model)
+            all_outputs[name] = stdout
+
+            # ステータス更新: 完了
+            stage_status[name].success(f"✅ {label}")
+
+        except subprocess.TimeoutExpired:
+            stage_status[name].error(f"❌ {label} タイムアウト")
+            log_area.error(f"{label} がタイムアウトしました（600秒）")
+            error_occurred = True
+            break
+        except Exception as e:
+            stage_status[name].error(f"❌ {label} エラー")
+            log_area.error(f"{label} でエラー: {e}")
+            error_occurred = True
+            break
+
+    if not error_occurred:
+        progress_bar.progress(1.0)
+        log_area.empty()
+        st.success("🎉 全工程が完了しました!")
+
+    # ---------- 結果表示 ----------
+    st.divider()
+    tab_design, tab_arch, tab_code, tab_review = st.tabs([
+        "🎨 デザイン分析",
+        "🏗️ 設計書",
+        "💻 生成コード",
+        "🔍 レビュー結果",
+    ])
+
+    with tab_design:
+        content = read_file_safe("design-analysis.md")
+        if content:
+            st.markdown(content)
         else:
-            st.success("全工程が完了しました!")
+            st.info("design-analysis.md がまだ生成されていません")
 
-            # ---------- 結果表示（タブ） ----------
-            tab_design, tab_arch, tab_code, tab_review = st.tabs([
-                "🎨 デザイン分析",
-                "🏗️ 設計書",
-                "💻 生成コード",
-                "🔍 レビュー結果",
-            ])
+    with tab_arch:
+        content = read_file_safe("architecture.md")
+        if content:
+            st.markdown(content)
+        else:
+            st.info("architecture.md がまだ生成されていません")
 
-            with tab_design:
-                st.subheader("デザイン分析結果")
-                if result.design_analysis:
-                    summary = result.design_analysis.get("design_summary", "")
-                    if summary:
-                        st.markdown(f"> {summary}")
+    with tab_code:
+        files = list_output_files()
+        if files:
+            st.markdown(f"**{len(files)} ファイル** が生成されました")
+            for path, content in files:
+                ext = os.path.splitext(path)[1].lstrip(".")
+                lang = {"tsx": "tsx", "ts": "typescript", "jsx": "jsx", "js": "javascript", "css": "css", "json": "json"}.get(ext, "")
+                with st.expander(f"📄 {path}"):
+                    st.code(content, language=lang)
+        else:
+            st.info("output/ にまだファイルが生成されていません")
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("#### カラーパレット")
-                        palette = result.design_analysis.get("color_palette", {})
-                        for name, color in palette.items():
-                            if isinstance(color, str):
-                                st.markdown(f"- **{name}**: `{color}`")
-                            elif isinstance(color, list):
-                                st.markdown(f"- **{name}**: {', '.join(f'`{c}`' for c in color)}")
+    with tab_review:
+        content = read_file_safe("review.md")
+        if content:
+            st.markdown(content)
+        else:
+            st.info("review.md がまだ生成されていません")
 
-                    with col2:
-                        st.markdown("#### タイポグラフィ")
-                        for t in result.design_analysis.get("typography", []):
-                            st.markdown(
-                                f"- **{t.get('role', '')}**: "
-                                f"{t.get('font_family', '')} "
-                                f"{t.get('font_size', '')}px / "
-                                f"weight {t.get('font_weight', '')}"
-                            )
-
-                    st.markdown("#### コンポーネント一覧")
-                    for c in result.design_analysis.get("components", []):
-                        children = c.get("children", [])
-                        children_str = f" → {', '.join(children)}" if children else ""
-                        st.markdown(f"- **{c.get('name', '')}** ({c.get('type', '')}){children_str}")
-
-                    with st.expander("生データ（JSON）"):
-                        st.json(result.design_analysis)
-
-            with tab_arch:
-                st.subheader("コンポーネント設計書")
-                if result.architecture:
-                    st.markdown("#### ファイル構成")
-                    for f in result.architecture.get("file_structure", []):
-                        st.markdown(f"- `{f.get('path', '')}` — {f.get('description', '')}")
-
-                    st.markdown("#### コンポーネント定義")
-                    for comp in result.architecture.get("components", []):
-                        with st.expander(f"📦 {comp.get('name', '')} ({comp.get('type', 'server')})"):
-                            st.markdown(f"**説明**: {comp.get('description', '')}")
-                            st.markdown(f"**ファイル**: `{comp.get('file_path', '')}`")
-
-                            props = comp.get("props", [])
-                            if props:
-                                st.markdown("**Props:**")
-                                for p in props:
-                                    req = "必須" if p.get("required") else "任意"
-                                    st.markdown(
-                                        f"- `{p.get('name', '')}`: "
-                                        f"`{p.get('type', '')}` ({req}) — "
-                                        f"{p.get('description', '')}"
-                                    )
-
-                            shadcn = comp.get("shadcn_components", [])
-                            if shadcn:
-                                st.markdown(f"**shadcn/ui**: {', '.join(shadcn)}")
-
-                    with st.expander("生データ（JSON）"):
-                        st.json(result.architecture)
-
-            with tab_code:
-                st.subheader("生成コード")
-                if result.generated_code:
-                    files = result.generated_code.get("files", [])
-                    st.markdown(f"**{len(files)}ファイル** が生成されました")
-
-                    deps = result.generated_code.get("dependencies", [])
-                    if deps:
-                        st.markdown(f"**追加パッケージ**: {', '.join(f'`{d}`' for d in deps)}")
-
-                    notes = result.generated_code.get("setup_notes", "")
-                    if notes:
-                        st.info(notes)
-
-                    for f in files:
-                        with st.expander(f"📄 {f.get('path', '')}"):
-                            st.code(f.get("content", ""), language="tsx")
-
-                    # ZIPダウンロード
-                    zip_data = result.to_zip()
-                    st.download_button(
-                        label="ZIPでダウンロード",
-                        data=zip_data,
-                        file_name="generated-code.zip",
-                        mime="application/zip",
-                        type="primary",
-                        use_container_width=True,
-                    )
-
-            with tab_review:
-                st.subheader("レビュー結果")
-                if result.review:
-                    score = result.review.get("score", 0)
-                    approved = result.review.get("approved", False)
-
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        st.metric("総合スコア", f"{score}/100")
-                        if approved:
-                            st.success("承認")
-                        else:
-                            st.warning("要改善")
-                    with col2:
-                        st.markdown(result.review.get("summary", ""))
-
-                    st.markdown("#### カテゴリ別評価")
-                    cats = result.review.get("categories", {})
-                    cat_cols = st.columns(len(cats) if cats else 1)
-                    for i, (cat_name, cat_data) in enumerate(cats.items()):
-                        with cat_cols[i]:
-                            label = {
-                                "code_quality": "コード品質",
-                                "design_fidelity": "デザイン忠実度",
-                                "accessibility": "アクセシビリティ",
-                                "responsiveness": "レスポンシブ",
-                            }.get(cat_name, cat_name)
-                            st.metric(label, f"{cat_data.get('score', 0)}/100")
-                            st.caption(cat_data.get("notes", ""))
-
-                    issues = result.review.get("issues", [])
-                    if issues:
-                        st.markdown("#### 指摘事項")
-                        for issue in issues:
-                            severity = issue.get("severity", "info")
-                            icon = {"critical": "🔴", "warning": "🟡", "info": "🔵"}.get(severity, "⚪")
-                            st.markdown(
-                                f"{icon} **[{severity}]** `{issue.get('file', '')}`  \n"
-                                f"{issue.get('description', '')}  \n"
-                                f"💡 {issue.get('suggestion', '')}"
-                            )
-
-                    improvements = result.review.get("improvements", [])
-                    if improvements:
-                        st.markdown("#### 改善提案")
-                        for imp in improvements:
-                            st.markdown(f"- {imp}")
-
-                    with st.expander("生データ（JSON）"):
-                        st.json(result.review)
-
-    except Exception as e:
-        st.error(f"実行エラー: {e}")
+    # エージェント出力ログ
+    with st.expander("エージェント実行ログ"):
+        for name, output in all_outputs.items():
+            agent_label = next(a["label"] for a in AGENTS if a["name"] == name)
+            st.markdown(f"### {agent_label}")
+            st.text(output[:3000] if len(output) > 3000 else output)
