@@ -9,11 +9,13 @@ import os
 import shutil
 import subprocess
 import zipfile
+from datetime import datetime
 import streamlit as st
 
 # プロジェクトルート
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOADS_DIR = os.path.join(PROJECT_DIR, "uploads")
+EXPORTS_DIR = os.path.join(PROJECT_DIR, "exports")
 
 # ---------- ページ設定 ----------
 st.set_page_config(
@@ -62,6 +64,22 @@ with st.sidebar:
         ["sonnet", "opus", "haiku"],
         index=0,
     )
+
+    # 過去のエクスポート一覧
+    exports = list_exports()
+    if exports:
+        st.divider()
+        st.markdown(f"### 過去のエクスポート ({len(exports)}件)")
+        for fname, fpath in exports:
+            with open(fpath, "rb") as f:
+                st.download_button(
+                    label=f"📦 {fname}",
+                    data=f.read(),
+                    file_name=fname,
+                    mime="application/zip",
+                    key=f"export_{fname}",
+                    use_container_width=True,
+                )
 
 # ---------- エージェント定義 ----------
 AGENTS = [
@@ -166,6 +184,29 @@ def list_output_files() -> list[tuple[str, str]]:
                 files.append((full, content))
             except (UnicodeDecodeError, OSError):
                 files.append((full, "(バイナリファイル)"))
+    return files
+
+
+def save_to_exports(zip_data: bytes) -> str:
+    """ZIPデータをexports/にタイムスタンプ付きで保存し、フルパスを返す。"""
+    os.makedirs(EXPORTS_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    filename = f"figma-output_{timestamp}.zip"
+    filepath = os.path.join(EXPORTS_DIR, filename)
+    with open(filepath, "wb") as f:
+        f.write(zip_data)
+    return filepath
+
+
+def list_exports() -> list[tuple[str, str]]:
+    """exports/内のZIPファイル一覧を返す。(ファイル名, フルパス) 新しい順。"""
+    if not os.path.isdir(EXPORTS_DIR):
+        return []
+    files = []
+    for name in os.listdir(EXPORTS_DIR):
+        if name.endswith(".zip"):
+            files.append((name, os.path.join(EXPORTS_DIR, name)))
+    files.sort(key=lambda x: x[0], reverse=True)
     return files
 
 
@@ -396,14 +437,16 @@ if auto_run and has_input:
                 for fpath, _ in list_output_files():
                     st.markdown(f"  - `{fpath}`")
 
-        # ZIPダウンロード
+        # ZIPダウンロード + exports保存
         st.markdown("### 一括ダウンロード")
         zip_data = build_zip()
         if zip_data:
+            export_path = save_to_exports(zip_data)
+            st.info(f"📦 エクスポート保存: `{export_path}`")
             st.download_button(
                 label="全ファイルをZIPでダウンロード",
                 data=zip_data,
-                file_name="figma-to-claude-output.zip",
+                file_name=os.path.basename(export_path),
                 mime="application/zip",
                 type="primary",
                 use_container_width=True,

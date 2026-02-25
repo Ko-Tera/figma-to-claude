@@ -30,6 +30,9 @@ Thumbs.db
 output/
 *.zip
 
+# Exports (ZIP archives)
+exports/
+
 # Uploads
 uploads/
 

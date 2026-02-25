@@ -4,13 +4,17 @@ Figma URL または デザイン画像を入力すると、4つのエージェ�
 デザイン分析 → 設計 → コード生成 → レビューまでを自動で行う。
 """
 
+import io
 import os
 import shutil
 import subprocess
 import sys
+import zipfile
+from datetime import datetime
 
 # このスクリプトがあるディレクトリ = プロジェクトルート
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+EXPORTS_DIR = os.path.join(PROJECT_DIR, "exports")
 
 
 def run_agent(agent_name: str, prompt: str) -> str:
@@ -98,6 +102,48 @@ def run_pipeline(source: str) -> dict:
     return results
 
 
+def build_zip() -> bytes | None:
+    """全出力ファイルを1つのZIPにまとめて返す。"""
+    buf = io.BytesIO()
+    file_count = 0
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in ["design-analysis.md", "architecture.md", "review.md"]:
+            path = os.path.join(PROJECT_DIR, name)
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    zf.writestr(name, f.read())
+                file_count += 1
+
+        output_dir = os.path.join(PROJECT_DIR, "output")
+        if os.path.isdir(output_dir):
+            for root, _, names in os.walk(output_dir):
+                for fname in names:
+                    full = os.path.join(root, fname)
+                    rel = os.path.relpath(full, PROJECT_DIR)
+                    try:
+                        with open(full, "rb") as f:
+                            zf.writestr(rel, f.read())
+                        file_count += 1
+                    except OSError:
+                        pass
+
+    if file_count == 0:
+        return None
+    return buf.getvalue()
+
+
+def save_to_exports(zip_data: bytes) -> str:
+    """ZIPデータをexports/にタイムスタンプ付きで保存し、フルパスを返す。"""
+    os.makedirs(EXPORTS_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    filename = f"figma-output_{timestamp}.zip"
+    filepath = os.path.join(EXPORTS_DIR, filename)
+    with open(filepath, "wb") as f:
+        f.write(zip_data)
+    return filepath
+
+
 def main():
     """CLIエントリポイント。"""
     if len(sys.argv) < 2:
@@ -133,6 +179,12 @@ def main():
         print(f"\n❌ エラー: {e}")
         sys.exit(1)
 
+    # exports/ に ZIP を保存
+    zip_data = build_zip()
+    if zip_data:
+        export_path = save_to_exports(zip_data)
+        print(f"\n📦 エクスポート保存: {export_path}")
+
     print("\n" + "=" * 50)
     print("🎉 全工程完了!")
     print("=" * 50)
@@ -140,6 +192,8 @@ def main():
     print(f"  📄 architecture.md    — 設計書")
     print(f"  📁 output/            — 生成コード")
     print(f"  📄 review.md          — レビュー結果")
+    if zip_data:
+        print(f"  📦 {export_path}  — ZIPアーカイブ")
 
 
 if __name__ == "__main__":
