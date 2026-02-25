@@ -197,212 +197,258 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ---------- カスタムCSS ----------
+# ---------- Notion風カスタムCSS ----------
 st.markdown("""
 <style>
-    /* 全体 */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Georgia&display=swap');
+
     .stApp {
-        background-color: #f7f7f8;
+        background-color: #f7f6f3;
     }
     .block-container {
-        max-width: 720px;
-        padding-top: 3rem;
-        padding-bottom: 4rem;
+        max-width: 680px;
+        padding-top: 4.5rem;
+        padding-bottom: 6rem;
     }
 
-    /* ヘッダー */
-    h1 {
-        font-weight: 600 !important;
-        font-size: 1.6rem !important;
-        letter-spacing: -0.02em;
-        color: #1a1a1a !important;
+    /* タイトル: Notion風セリフ体 */
+    .notion-title {
+        font-family: Georgia, 'Times New Roman', serif;
+        font-weight: normal;
+        font-size: 2.2rem;
+        color: #37352f;
+        letter-spacing: -0.03em;
+        line-height: 1.2;
+        margin: 0 0 0.3rem 0;
+    }
+    .notion-sub {
+        font-family: 'Inter', -apple-system, sans-serif;
+        color: #9b9a97;
+        font-size: 0.88rem;
+        font-weight: 400;
+        margin-bottom: 2.5rem;
     }
 
-    /* サブテキスト */
-    .subtle {
-        color: #8c8c8c;
-        font-size: 0.85rem;
-        margin-bottom: 2rem;
-    }
+    /* Notion h1 override */
+    h1 { display: none !important; }
 
-    /* ステップインジケーター */
-    .steps {
+    /* ステップ: Notion breadcrumb風 */
+    .n-steps {
         display: flex;
+        align-items: center;
         gap: 0;
-        margin: 1.5rem 0;
-        align-items: center;
+        margin: 0 0 2rem 0;
+        padding: 0.7rem 0;
+        border-bottom: 1px solid #e9e8e4;
     }
-    .step {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.78rem;
-        color: #b0b0b0;
-        transition: color 0.2s;
+    .n-step {
+        font-family: 'Inter', -apple-system, sans-serif;
+        font-size: 0.8rem;
+        color: #c4c3bf;
+        padding: 0.2rem 0;
+        transition: color 0.15s;
     }
-    .step.active {
-        color: #1a1a1a;
+    .n-step.active {
+        color: #37352f;
         font-weight: 500;
     }
-    .step.done {
-        color: #10b981;
+    .n-step.done {
+        color: #6b7b6e;
     }
-    .step-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #e0e0e0;
-        flex-shrink: 0;
+    .n-sep {
+        color: #d6d5d1;
+        font-size: 0.7rem;
+        margin: 0 0.6rem;
+        user-select: none;
     }
-    .step.active .step-dot {
-        background: #1a1a1a;
-        box-shadow: 0 0 0 3px rgba(26,26,26,0.1);
-    }
-    .step.done .step-dot {
-        background: #10b981;
-    }
-    .step-line {
-        width: 24px;
-        height: 1px;
-        background: #e5e5e5;
-        margin: 0 8px;
-        flex-shrink: 0;
+
+    /* セクション見出し */
+    .n-section {
+        font-family: 'Inter', -apple-system, sans-serif;
+        font-size: 0.72rem;
+        font-weight: 500;
+        color: #9b9a97;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 1.8rem 0 0.6rem 0;
     }
 
     /* ボタン */
     .stButton > button[kind="primary"] {
-        background-color: #1a1a1a !important;
-        color: #f5f5f5 !important;
+        background-color: #37352f !important;
+        color: #f7f6f3 !important;
         border: none !important;
-        border-radius: 8px !important;
-        padding: 0.55rem 1.5rem !important;
+        border-radius: 4px !important;
+        padding: 0.5rem 1.2rem !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
         font-weight: 500 !important;
-        font-size: 0.85rem !important;
-        transition: background 0.15s;
+        font-size: 0.82rem !important;
+        transition: background 0.12s;
     }
     .stButton > button[kind="primary"]:hover {
-        background-color: #333333 !important;
+        background-color: #4a4a45 !important;
     }
     .stButton > button[kind="secondary"] {
         background-color: transparent !important;
-        color: #666666 !important;
-        border: 1px solid #e5e5e5 !important;
-        border-radius: 8px !important;
-        padding: 0.55rem 1.5rem !important;
+        color: #6b6b65 !important;
+        border: 1px solid #e3e2de !important;
+        border-radius: 4px !important;
+        padding: 0.5rem 1.2rem !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
         font-weight: 400 !important;
-        font-size: 0.85rem !important;
+        font-size: 0.82rem !important;
     }
     .stButton > button[kind="secondary"]:hover {
-        border-color: #cccccc !important;
-        color: #1a1a1a !important;
+        background-color: #edece8 !important;
+        border-color: #d5d4d0 !important;
+        color: #37352f !important;
     }
 
-    /* 入力フィールド */
+    /* テキスト入力: Notion inline風 */
     .stTextInput > div > div > input {
-        border: 1px solid #e5e5e5 !important;
-        border-radius: 8px !important;
-        padding: 0.6rem 0.9rem !important;
-        font-size: 0.85rem !important;
-        background: #fafafa !important;
+        border: none !important;
+        border-bottom: 1px solid #e3e2de !important;
+        border-radius: 0 !important;
+        padding: 0.5rem 0 !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.88rem !important;
+        background: transparent !important;
+        color: #37352f !important;
+    }
+    .stTextInput > div > div > input::placeholder {
+        color: #c4c3bf !important;
     }
     .stTextInput > div > div > input:focus {
-        border-color: #1a1a1a !important;
+        border-bottom-color: #37352f !important;
         box-shadow: none !important;
-        background: #f7f7f8 !important;
+        background: transparent !important;
     }
 
-    /* ラジオ */
+    /* ラジオ: タブ風 */
     .stRadio > div {
-        gap: 0.5rem;
+        gap: 0 !important;
     }
-
-    /* Expander */
-    .streamlit-expanderHeader {
-        font-size: 0.85rem !important;
-        font-weight: 500 !important;
-        color: #444444 !important;
+    .stRadio > div > label {
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.82rem !important;
+        color: #9b9a97 !important;
+        font-weight: 400 !important;
     }
 
     /* ファイルアップローダー */
     .stFileUploader > div > div {
-        border: 1px dashed #d5d5d5 !important;
-        border-radius: 8px !important;
-        background: #fafafa !important;
+        border: 1px dashed #d5d4d0 !important;
+        border-radius: 4px !important;
+        background: #edece8 !important;
+    }
+    .stFileUploader > label {
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.8rem !important;
+        color: #9b9a97 !important;
+        font-weight: 400 !important;
     }
 
-    /* 結果カード */
-    .result-card {
-        border: 1px solid #f0f0f0;
-        border-radius: 10px;
-        padding: 1.2rem 1.4rem;
-        margin: 0.6rem 0;
-        background: #fafafa;
+    /* 結果ブロック: Notion callout風 */
+    .n-result {
+        background: #edece8;
+        border-radius: 4px;
+        padding: 0.9rem 1rem;
+        margin: 0.5rem 0;
     }
-    .result-card h4 {
-        margin: 0 0 0.4rem 0;
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: #1a1a1a;
+    .n-result-title {
+        font-family: 'Inter', -apple-system, sans-serif;
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: #37352f;
+        margin: 0 0 0.25rem 0;
     }
-    .result-card .path {
-        font-size: 0.75rem;
-        color: #999;
-        font-family: 'SF Mono', 'Menlo', monospace;
+    .n-result-path {
+        font-family: 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+        font-size: 0.72rem;
+        color: #9b9a97;
     }
 
-    /* プログレス */
+    /* プログレスバー */
     .stProgress > div > div > div {
-        background-color: #1a1a1a !important;
+        background-color: #37352f !important;
+        border-radius: 2px !important;
+    }
+    .stProgress > div > div {
+        background-color: #e3e2de !important;
+        border-radius: 2px !important;
+    }
+
+    /* Expander */
+    .streamlit-expanderHeader {
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.82rem !important;
+        font-weight: 400 !important;
+        color: #6b6b65 !important;
     }
 
     /* サイドバー */
     section[data-testid="stSidebar"] {
-        background-color: #fafafa;
-        border-right: 1px solid #f0f0f0;
+        background-color: #f0efeb;
+        border-right: none;
     }
-    section[data-testid="stSidebar"] .block-container {
-        padding-top: 2rem;
+    section[data-testid="stSidebar"] h4 {
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.72rem !important;
+        font-weight: 500 !important;
+        color: #9b9a97 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.06em !important;
     }
 
-    /* divider */
+    /* Divider */
     hr {
-        border-color: #f0f0f0 !important;
+        border-color: #e9e8e4 !important;
     }
 
-    /* download button */
+    /* ダウンロードボタン */
     .stDownloadButton > button {
         background-color: transparent !important;
-        color: #1a1a1a !important;
-        border: 1px solid #e5e5e5 !important;
-        border-radius: 8px !important;
+        color: #37352f !important;
+        border: 1px solid #e3e2de !important;
+        border-radius: 4px !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
         font-size: 0.8rem !important;
         font-weight: 400 !important;
     }
     .stDownloadButton > button:hover {
-        border-color: #1a1a1a !important;
+        background-color: #edece8 !important;
+        border-color: #d5d4d0 !important;
     }
 
-    /* 成功メッセージ */
+    /* アラート */
     .stSuccess {
-        background-color: #f0fdf4 !important;
-        border: 1px solid #bbf7d0 !important;
-        color: #166534 !important;
-        border-radius: 8px !important;
+        background-color: #edece8 !important;
+        border: none !important;
+        border-left: 3px solid #6b7b6e !important;
+        color: #37352f !important;
+        border-radius: 0 4px 4px 0 !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.85rem !important;
+    }
+    .stError {
+        background-color: #edece8 !important;
+        border: none !important;
+        border-left: 3px solid #9b6b6b !important;
+        color: #37352f !important;
+        border-radius: 0 4px 4px 0 !important;
     }
 
-    /* info */
-    .stInfo {
-        background-color: #f8f9fa !important;
-        border: 1px solid #e9ecef !important;
-        color: #495057 !important;
-        border-radius: 8px !important;
-    }
-
-    /* ラベル非表示 */
+    /* ラベル共通 */
     .stRadio > label, .stTextInput > label, .stFileUploader > label {
-        font-size: 0.8rem !important;
-        color: #888 !important;
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        font-size: 0.78rem !important;
+        color: #9b9a97 !important;
         font-weight: 400 !important;
+    }
+
+    /* コードブロック */
+    .stCodeBlock {
+        border-radius: 4px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -416,10 +462,10 @@ if "error_msg" not in st.session_state:
     st.session_state.error_msg = None
 
 # ---------- ヘッダー ----------
-st.markdown("# Figma to Code")
-st.markdown('<p class="subtle">Figma URL or design images &rarr; production-ready code, automatically.</p>', unsafe_allow_html=True)
+st.markdown('<div class="notion-title">Figma to Code</div>', unsafe_allow_html=True)
+st.markdown('<p class="notion-sub">Paste a Figma URL or upload design images to generate production-ready code.</p>', unsafe_allow_html=True)
 
-# ---------- サイドバー（最小限） ----------
+# ---------- サイドバー ----------
 with st.sidebar:
     st.markdown("#### Exports")
     exports = list_exports()
@@ -435,27 +481,26 @@ with st.sidebar:
                     use_container_width=True,
                 )
     else:
-        st.caption("No exports yet.")
+        st.markdown('<p style="font-size:0.8rem; color:#9b9a97;">No exports yet.</p>', unsafe_allow_html=True)
 
 # ---------- claude CLI チェック ----------
 if not shutil.which("claude"):
-    st.error("claude CLI not found. Run `npm install -g @anthropic-ai/claude-code`")
+    st.error("claude CLI not found. Run: npm install -g @anthropic-ai/claude-code")
     st.stop()
 
-# ---------- パイプラインステップ表示 ----------
+# ---------- ステップ表示 ----------
 def render_steps(current: int = -1, done_count: int = 0):
-    """ステップインジケーターをレンダリングする。"""
     parts = []
     for i, agent in enumerate(AGENTS):
-        cls = "step"
+        cls = "n-step"
         if i < done_count:
             cls += " done"
         elif i == current:
             cls += " active"
-        parts.append(f'<div class="{cls}"><span class="step-dot"></span>{agent["label"]}</div>')
+        parts.append(f'<span class="{cls}">{agent["label"]}</span>')
         if i < len(AGENTS) - 1:
-            parts.append('<div class="step-line"></div>')
-    return f'<div class="steps">{"".join(parts)}</div>'
+            parts.append('<span class="n-sep">/</span>')
+    return f'<div class="n-steps">{"".join(parts)}</div>'
 
 st.markdown(render_steps(), unsafe_allow_html=True)
 
@@ -474,7 +519,7 @@ image_paths = None
 if input_mode == "Figma URL":
     figma_url = st.text_input(
         "Figma URL",
-        placeholder="https://www.figma.com/design/...",
+        placeholder="Paste a Figma URL here...",
         label_visibility="collapsed",
     )
     has_input = bool(figma_url)
@@ -493,8 +538,8 @@ else:
             with cols[i % 4]:
                 st.image(img, caption=img.name, use_container_width=True)
 
-# ---------- アクションボタン ----------
-st.markdown("<div style='height: 0.5rem'></div>", unsafe_allow_html=True)
+# ---------- アクション ----------
+st.markdown("<div style='height: 0.8rem'></div>", unsafe_allow_html=True)
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -520,7 +565,7 @@ if (auto_run or interactive_run) and uploaded_images:
 # ---------- 対話モード ----------
 if interactive_run and has_input:
     prompt = build_designer_prompt(figma_url, image_paths)
-    full_prompt = f"以下の入力からデザインを分析してコードを生成してください。designer → architect → coder → reviewer の順にエージェントを使ってください:\n{prompt}"
+    full_prompt = f"以下の入力からデザインを分析してコードを生成してください。designer / architect / coder / reviewer の順にエージェントを使ってください:\n{prompt}"
     apple_script = f'''
     tell application "Terminal"
         activate
@@ -528,15 +573,15 @@ if interactive_run and has_input:
     end tell
     '''
     subprocess.Popen(["osascript", "-e", apple_script])
-    st.success("Claude Code launched in Terminal.")
+    st.success("Launched Claude Code in Terminal.")
 
-# ---------- 自動パイプライン実行 ----------
+# ---------- 自動パイプライン ----------
 if auto_run and has_input:
     st.session_state.pipeline_done = False
     st.session_state.all_outputs = {}
     st.session_state.error_msg = None
 
-    st.markdown("<div style='height: 1rem'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height: 1.2rem'></div>", unsafe_allow_html=True)
 
     progress_bar = st.progress(0.0)
     status_text = st.empty()
@@ -550,12 +595,14 @@ if auto_run and has_input:
         label = agent["label"]
         output_file = agent["output_file"]
 
-        # ステップ表示更新
         step_display.markdown(render_steps(current=i, done_count=i), unsafe_allow_html=True)
         progress_bar.progress(i / 4)
-        status_text.markdown(f"<p style='color:#888; font-size:0.8rem;'>Running {label}...</p>", unsafe_allow_html=True)
+        status_text.markdown(
+            f'<p style="font-family:Inter,-apple-system,sans-serif; color:#9b9a97; font-size:0.8rem;">'
+            f'Running {label}...</p>',
+            unsafe_allow_html=True,
+        )
 
-        # プロンプト構築
         if name == "designer":
             prompt = build_designer_prompt(figma_url, image_paths)
         else:
@@ -565,16 +612,15 @@ if auto_run and has_input:
             stdout, stderr = run_claude_agent(name, prompt, MODEL)
             st.session_state.all_outputs[name] = stdout
 
-            # 完了した結果を即座に表示
             with results_container:
                 if output_file:
                     content = read_file_safe(output_file)
                     if content:
                         full_path = os.path.join(PROJECT_DIR, output_file)
                         st.markdown(
-                            f'<div class="result-card">'
-                            f'<h4>{label}</h4>'
-                            f'<p class="path">{full_path}</p>'
+                            f'<div class="n-result">'
+                            f'<div class="n-result-title">{label}</div>'
+                            f'<div class="n-result-path">{full_path}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -584,9 +630,9 @@ if auto_run and has_input:
                     files = list_output_files()
                     if files:
                         st.markdown(
-                            f'<div class="result-card">'
-                            f'<h4>{label}</h4>'
-                            f'<p class="path">{os.path.join(PROJECT_DIR, "output/")} &mdash; {len(files)} files</p>'
+                            f'<div class="n-result">'
+                            f'<div class="n-result-title">{label}</div>'
+                            f'<div class="n-result-path">{os.path.join(PROJECT_DIR, "output/")} -- {len(files)} files</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -600,12 +646,20 @@ if auto_run and has_input:
                                 st.code(fcontent, language=lang)
 
         except subprocess.TimeoutExpired:
-            status_text.markdown(f"<p style='color:#dc2626; font-size:0.8rem;'>{label} timed out (600s)</p>", unsafe_allow_html=True)
+            status_text.markdown(
+                f'<p style="font-family:Inter,-apple-system,sans-serif; color:#9b6b6b; font-size:0.8rem;">'
+                f'{label} timed out (600s)</p>',
+                unsafe_allow_html=True,
+            )
             st.session_state.error_msg = f"{label} timed out"
             error_occurred = True
             break
         except Exception as e:
-            status_text.markdown(f"<p style='color:#dc2626; font-size:0.8rem;'>{label}: {e}</p>", unsafe_allow_html=True)
+            status_text.markdown(
+                f'<p style="font-family:Inter,-apple-system,sans-serif; color:#9b6b6b; font-size:0.8rem;">'
+                f'{label}: {e}</p>',
+                unsafe_allow_html=True,
+            )
             st.session_state.error_msg = str(e)
             error_occurred = True
             break
@@ -616,14 +670,17 @@ if auto_run and has_input:
         status_text.empty()
         st.session_state.pipeline_done = True
 
-        st.markdown("<div style='height: 0.5rem'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 0.6rem'></div>", unsafe_allow_html=True)
         st.success("All steps completed.")
 
-        # ZIP + exports
         zip_data = build_zip()
         if zip_data:
             export_path = save_to_exports(zip_data)
-            st.markdown(f"<p style='color:#888; font-size:0.75rem;'>Saved to {export_path}</p>", unsafe_allow_html=True)
+            st.markdown(
+                f'<p style="font-family:Inter,-apple-system,sans-serif; color:#9b9a97; font-size:0.72rem; margin-top:0.4rem;">'
+                f'Saved to {export_path}</p>',
+                unsafe_allow_html=True,
+            )
             st.download_button(
                 label="Download all as ZIP",
                 data=zip_data,
@@ -632,7 +689,6 @@ if auto_run and has_input:
                 use_container_width=True,
             )
 
-    # raw log
     with st.expander("Raw agent output"):
         for name, output in st.session_state.all_outputs.items():
             agent_label = next(a["label"] for a in AGENTS if a["name"] == name)
